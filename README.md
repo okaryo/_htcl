@@ -77,14 +77,31 @@ At each stage, the implementation should remain small enough to inspect and
 explain. When the design becomes unclear, the roadmap should be updated rather
 than treated as fixed.
 
-## Current State
+## Running the Current Client
 
-The project currently contains documentation only. The first implementation
-milestone is to build a minimal HTTP/1.1 GET client using `net.Dial` and manual
-request/response handling.
+The current implementation is a minimal raw HTTP/1.1 GET client.
+
+Run the command against a local HTTP server:
+
+```sh
+go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello
+```
+
+The command opens a TCP connection, writes a manual HTTP/1.1 request, then
+prints the raw response bytes without parsing them.
+
+The default timeout is 30 seconds. To make blocking behavior easier to observe:
+
+```sh
+go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello -timeout 5s
+```
+
+This first client sends `Connection: close` so EOF marks the end of the raw
+response. Keep-alive and response body framing are later learning steps.
 
 ## Project Documents
 
 - `README.md`: project purpose, scope, and high-level learning direction.
 - `AGENTS.md`: working instructions for AI agents and future contributors.
 - `TODO.md`: living learning roadmap and progress tracker.
+- `docs/tcp-http-get.md`: notes on the first raw TCP HTTP GET step.

@@ -27,8 +27,8 @@ Initial focus:
 - [x] Define the project purpose.
 - [x] Create initial project documentation.
 - [x] Decide the first implementation milestone.
-- [ ] Decide the initial package layout after the first milestone is clear.
-- [ ] Decide how to organize learning notes.
+- [x] Decide the initial package layout after the first milestone is clear.
+- [x] Decide how to organize learning notes.
 
 First implementation milestone:
 
@@ -38,14 +38,14 @@ First implementation milestone:
 
 ### 1. Raw TCP HTTP Request
 
-- [ ] Initialize the Go module.
-- [ ] Create a minimal command entry point.
-- [ ] Open a TCP connection with `net.Dial`.
-- [ ] Write a minimal HTTP/1.1 GET request manually.
-- [ ] Read raw response bytes from the connection.
-- [ ] Print the raw response for observation.
-- [ ] Add read and write deadlines.
-- [ ] Document the client-side connection lifecycle.
+- [x] Initialize the Go module.
+- [x] Create a minimal command entry point.
+- [x] Open a TCP connection with `net.Dial`.
+- [x] Write a minimal HTTP/1.1 GET request manually.
+- [x] Read raw response bytes from the connection.
+- [x] Print the raw response for observation.
+- [x] Add read and write deadlines.
+- [x] Document the client-side connection lifecycle.
 
 Questions to answer:
 
@@ -217,3 +217,15 @@ changes.
 - First implementation milestone: start with `net.Dial`, manually write a
   minimal HTTP/1.1 GET request, and read the raw response before introducing
   higher-level abstractions.
+- Initialized the Go module as `github.com/okaryo/_htcl`.
+- Added the first `htcl` command that opens a TCP connection, writes a manual
+  HTTP/1.1 GET request, and prints raw response bytes.
+- Added write and read deadlines so the first blocking points can be observed
+  without leaving the command waiting forever.
+- Used `Connection: close` for the first milestone so EOF can act as the
+  response completion signal before response body framing is implemented.
+- Documented the initial raw TCP HTTP GET lifecycle in
+  `docs/tcp-http-get.md`.
+- Initial package layout: start with `cmd/htcl` only, and add internal packages
+  when parsing or reusable client behavior needs clearer boundaries.
+- Learning notes will live under `docs/` as topic-specific Markdown files.
