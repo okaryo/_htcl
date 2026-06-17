@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/okaryo/_htcl/internal/http1"
 )
 
 func main() {
@@ -37,10 +39,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("target must start with /")
 	}
 
-	return getRawHTTP(*address, *host, *target, *timeout, stdout, stderr)
+	return getHTTP(*address, *host, *target, *timeout, stdout, stderr)
 }
 
-func getRawHTTP(address, host, target string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getHTTP(address, host, target string, timeout time.Duration, stdout, stderr io.Writer) error {
 	dialer := net.Dialer{Timeout: timeout}
 
 	fmt.Fprintf(stderr, "dialing tcp %s\n", address)
@@ -69,22 +71,13 @@ func getRawHTTP(address, host, target string, timeout time.Duration, stdout, std
 		return fmt.Errorf("set read deadline: %w", err)
 	}
 
-	fmt.Fprintln(stderr, "reading raw HTTP response")
-	buf := make([]byte, 4096)
-	for {
-		n, err := conn.Read(buf)
-		if n > 0 {
-			if _, writeErr := stdout.Write(buf[:n]); writeErr != nil {
-				return fmt.Errorf("write response to stdout: %w", writeErr)
-			}
-		}
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("read HTTP response: %w", err)
-		}
+	fmt.Fprintln(stderr, "reading HTTP response")
+	response, err := http1.ReadResponse(conn)
+	if err != nil {
+		return fmt.Errorf("read HTTP response: %w", err)
 	}
+
+	return writeResponse(stdout, response)
 }
 
 func writeAll(w io.Writer, p []byte) error {
@@ -97,6 +90,24 @@ func writeAll(w io.Writer, p []byte) error {
 			return io.ErrShortWrite
 		}
 		p = p[n:]
+	}
+	return nil
+}
+
+func writeResponse(w io.Writer, response *http1.Response) error {
+	if _, err := fmt.Fprintf(w, "%s %03d %s\r\n", response.Version, response.StatusCode, response.ReasonPhrase); err != nil {
+		return err
+	}
+	for _, field := range response.HeaderFields {
+		if _, err := fmt.Fprintf(w, "%s: %s\r\n", field.Name, field.Value); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprint(w, "\r\n"); err != nil {
+		return err
+	}
+	if _, err := w.Write(response.Body); err != nil {
+		return err
 	}
 	return nil
 }

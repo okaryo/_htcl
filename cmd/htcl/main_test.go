@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestRunWritesRawHTTPRequestAndPrintsRawResponse(t *testing.T) {
+func TestRunWritesHTTPRequestAndPrintsParsedResponse(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -45,7 +45,7 @@ func TestRunWritesRawHTTPRequestAndPrintsRawResponse(t *testing.T) {
 
 	got := stdout.String()
 	if !strings.Contains(got, "HTTP/1.1 200 OK\r\n") {
-		t.Fatalf("raw response was not printed:\n%s", got)
+		t.Fatalf("response status was not printed:\n%s", got)
 	}
 	if !strings.HasSuffix(got, "hello") {
 		t.Fatalf("response body mismatch:\n%s", got)

@@ -79,7 +79,7 @@ than treated as fixed.
 
 ## Running the Current Client
 
-The current implementation is a minimal raw HTTP/1.1 GET client.
+The current implementation is a minimal HTTP/1.1 GET client.
 
 Run the command against a local HTTP server:
 
@@ -87,8 +87,9 @@ Run the command against a local HTTP server:
 go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello
 ```
 
-The command opens a TCP connection, writes a manual HTTP/1.1 request, then
-prints the raw response bytes without parsing them.
+The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
+response status line, headers, and fixed-length body, then prints the parsed
+response.
 
 The default timeout is 30 seconds. To make blocking behavior easier to observe:
 
@@ -96,8 +97,9 @@ The default timeout is 30 seconds. To make blocking behavior easier to observe:
 go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello -timeout 5s
 ```
 
-This first client sends `Connection: close` so EOF marks the end of the raw
-response. Keep-alive and response body framing are later learning steps.
+This first client sends `Connection: close`, but fixed-length response bodies
+are now read using `Content-Length`. Keep-alive reuse and chunked transfer are
+later learning steps.
 
 ## Project Documents
 
@@ -105,3 +107,4 @@ response. Keep-alive and response body framing are later learning steps.
 - `AGENTS.md`: working instructions for AI agents and future contributors.
 - `TODO.md`: living learning roadmap and progress tracker.
 - `docs/tcp-http-get.md`: notes on the first raw TCP HTTP GET step.
+- `docs/http-response.md`: notes on the first HTTP response parsing step.

@@ -56,13 +56,13 @@ Questions to answer:
 
 ### 2. Minimal HTTP Response Parsing
 
-- [ ] Parse the status line.
-- [ ] Parse response headers.
-- [ ] Handle `Content-Length`.
-- [ ] Read fixed-length response bodies.
-- [ ] Return errors for malformed responses.
-- [ ] Separate line boundary reading from status/header parsing.
-- [ ] Add tests for partial reads and malformed input.
+- [x] Parse the status line.
+- [x] Parse response headers.
+- [x] Handle `Content-Length`.
+- [x] Read fixed-length response bodies.
+- [x] Return errors for malformed responses.
+- [x] Separate line boundary reading from status/header parsing.
+- [x] Add tests for partial reads and malformed input.
 
 Questions to answer:
 
@@ -229,3 +229,13 @@ changes.
 - Initial package layout: start with `cmd/htcl` only, and add internal packages
   when parsing or reusable client behavior needs clearer boundaries.
 - Learning notes will live under `docs/` as topic-specific Markdown files.
+- Added `internal/http1` for explicit response parsing once parser boundaries
+  became useful.
+- Added CRLF line reading, status line parsing, response header parsing,
+  `Content-Length` interpretation, and fixed-length response body reading.
+- Added tests for partial reads, malformed status lines, malformed headers,
+  invalid content lengths, incomplete bodies, and unsupported transfer
+  encodings.
+- Updated the command to parse the response from the TCP connection before
+  printing it.
+- Documented the initial response parser in `docs/http-response.md`.
