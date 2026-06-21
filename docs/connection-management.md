@@ -1,7 +1,7 @@
 # Connection Management
 
-The current client still opens one TCP connection per request and sends
-`Connection: close`.
+The current client still opens one TCP connection per request. `Client.Do`
+sends `Connection: close` because it does not keep idle connections yet.
 
 This document records the current smaller connection-management steps:
 
@@ -16,6 +16,8 @@ This document records the current smaller connection-management steps:
 
 ```text
 Dial TCP address
+  -> clone request
+  -> set Connection: close
   -> serialize request
   -> set write deadline
   -> write request bytes
@@ -26,6 +28,10 @@ Dial TCP address
 
 The connection is closed even if the response would be reusable under HTTP/1.1.
 This keeps the lifecycle visible before introducing idle connection ownership.
+
+`Client.Do` clones the caller's request before adding `Connection: close`, so
+the one-shot client's lifecycle policy does not mutate the request value passed
+by the caller.
 
 ## Current Decision Rule
 

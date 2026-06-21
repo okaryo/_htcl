@@ -17,6 +17,11 @@ func (c Client) Do(address string, request *Request) (*Response, error) {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
+	request = request.Clone()
+	if request == nil {
+		return nil, fmt.Errorf("request is nil")
+	}
+	request.SetHeader("Connection", "close")
 
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.Dial("tcp", address)

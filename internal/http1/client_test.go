@@ -22,7 +22,6 @@ func TestClientDoSendsRequestReadsResponseAndClosesConnection(t *testing.T) {
 
 	request, err := NewRequest("GET", "/hello", []HeaderField{
 		{Name: "Host", Value: "example.test"},
-		{Name: "Connection", Value: "close"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -45,9 +44,49 @@ func TestClientDoSendsRequestReadsResponseAndClosesConnection(t *testing.T) {
 	if !strings.HasPrefix(gotRequest, "GET /hello HTTP/1.1\r\n") {
 		t.Fatalf("request line mismatch:\n%s", gotRequest)
 	}
+	if !strings.Contains(gotRequest, "Connection: close\r\n") {
+		t.Fatalf("missing Connection: close header:\n%s", gotRequest)
+	}
 	if !<-closed {
 		t.Fatal("client did not close the connection")
 	}
+}
+
+func TestClientDoOverridesConnectionKeepAliveForOneShotRequest(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	closed := make(chan bool, 1)
+	go serveClientOnce(t, listener, requests, closed)
+
+	request, err := NewRequest("GET", "/hello", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+		{Name: "Connection", Value: "keep-alive"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	client := Client{Timeout: 2 * time.Second}
+	if _, err := client.Do(listener.Addr().String(), request); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	gotRequest := <-requests
+	if strings.Contains(gotRequest, "Connection: keep-alive\r\n") {
+		t.Fatalf("kept caller Connection header:\n%s", gotRequest)
+	}
+	if !strings.Contains(gotRequest, "Connection: close\r\n") {
+		t.Fatalf("missing Connection: close header:\n%s", gotRequest)
+	}
+	if got := request.HeaderFields[1].Value; got != "keep-alive" {
+		t.Fatalf("Client.Do mutated caller request header to %q", got)
+	}
+	<-closed
 }
 
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {

@@ -45,7 +45,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 	request, err := http1.NewRequest("GET", *target, []http1.HeaderField{
 		{Name: "Host", Value: *host},
 		{Name: "User-Agent", Value: "htcl/0.1"},
-		{Name: "Connection", Value: "close"},
 	}, nil)
 	if err != nil {
 		return err
@@ -69,7 +68,6 @@ func getURL(rawURL string, timeout time.Duration, stdout, stderr io.Writer) erro
 	}
 	request, err := http1.NewRequestForURL("GET", u, []http1.HeaderField{
 		{Name: "User-Agent", Value: "htcl/0.1"},
-		{Name: "Connection", Value: "close"},
 	}, nil)
 	if err != nil {
 		return err

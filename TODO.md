@@ -104,7 +104,7 @@ Questions to answer:
 ### 5. Connection Management
 
 - [x] Handle one request per TCP connection.
-- [ ] Support `Connection: close`.
+- [x] Support `Connection: close`.
 - [x] Decide whether a response requires closing the connection.
 - [ ] Implement basic HTTP/1.1 keep-alive reuse.
 - [ ] Track idle connections.
@@ -264,3 +264,6 @@ changes.
 - Added `http1.Client.Do` as an explicit one-request-per-connection client
   path. It dials, writes one request, reads one response, and closes the TCP
   connection before returning.
+- Moved one-shot `Connection: close` handling into `Client.Do`. The client
+  clones the request before adding or replacing the header so caller-owned
+  request values are not mutated.

@@ -72,6 +72,29 @@ func WriteRequest(w io.Writer, request *Request) error {
 	return nil
 }
 
+func (r *Request) Clone() *Request {
+	if r == nil {
+		return nil
+	}
+	return &Request{
+		Method:       r.Method,
+		Target:       r.Target,
+		Version:      r.Version,
+		HeaderFields: append([]HeaderField(nil), r.HeaderFields...),
+		Body:         append([]byte(nil), r.Body...),
+	}
+}
+
+func (r *Request) SetHeader(name, value string) {
+	for i, field := range r.HeaderFields {
+		if strings.EqualFold(field.Name, name) {
+			r.HeaderFields[i] = HeaderField{Name: name, Value: value}
+			return
+		}
+	}
+	r.HeaderFields = append(r.HeaderFields, HeaderField{Name: name, Value: value})
+}
+
 func (r *Request) prepare() error {
 	if r.Method == "" {
 		return fmt.Errorf("method is required")
