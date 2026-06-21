@@ -31,22 +31,17 @@ func NewRequest(method, target string, fields []HeaderField, body []byte) (*Requ
 }
 
 func NewRequestForURL(method string, u *url.URL, fields []HeaderField, body []byte) (*Request, error) {
-	if u == nil {
-		return nil, fmt.Errorf("URL is nil")
-	}
-	if u.Host == "" {
-		return nil, fmt.Errorf("URL host is required")
+	host, err := HostHeaderForURL(u)
+	if err != nil {
+		return nil, err
 	}
 
-	target := u.EscapedPath()
-	if target == "" {
-		target = "/"
-	}
-	if u.RawQuery != "" {
-		target += "?" + u.RawQuery
+	target, err := RequestTargetForURL(u)
+	if err != nil {
+		return nil, err
 	}
 
-	fields = append([]HeaderField{{Name: "Host", Value: u.Host}}, fields...)
+	fields = append([]HeaderField{{Name: "Host", Value: host}}, fields...)
 	return NewRequest(method, target, fields, body)
 }
 

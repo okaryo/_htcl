@@ -84,7 +84,7 @@ The current implementation is a minimal HTTP/1.1 GET client.
 Run the command against a local HTTP server:
 
 ```sh
-go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello
+go run ./cmd/htcl http://127.0.0.1:8080/hello
 ```
 
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
@@ -94,7 +94,7 @@ response.
 The default timeout is 30 seconds. To make blocking behavior easier to observe:
 
 ```sh
-go run ./cmd/htcl -addr 127.0.0.1:8080 -host localhost -target /hello -timeout 5s
+go run ./cmd/htcl -timeout 5s http://127.0.0.1:8080/hello
 ```
 
 This first client sends `Connection: close`, but fixed-length response bodies
@@ -109,3 +109,5 @@ later learning steps.
 - `docs/tcp-http-get.md`: notes on the first raw TCP HTTP GET step.
 - `docs/http-request.md`: notes on the first HTTP request serialization step.
 - `docs/http-response.md`: notes on the first HTTP response parsing step.
+- `docs/url-handling.md`: notes on URL-derived addresses, host headers, and
+  request targets.

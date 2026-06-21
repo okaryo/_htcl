@@ -88,12 +88,12 @@ Questions to answer:
 
 ### 4. URL Handling
 
-- [ ] Parse URL scheme, host, port, path, and query.
-- [ ] Decide supported schemes.
-- [ ] Apply default ports for HTTP and HTTPS.
-- [ ] Handle missing paths as `/`.
-- [ ] Study percent-encoding behavior.
-- [ ] Compare selected behavior with `net/url`.
+- [x] Parse URL scheme, host, port, path, and query.
+- [x] Decide supported schemes.
+- [x] Apply default ports for HTTP and HTTPS.
+- [x] Handle missing paths as `/`.
+- [x] Study percent-encoding behavior.
+- [x] Compare selected behavior with `net/url`.
 
 Questions to answer:
 
@@ -248,3 +248,10 @@ changes.
 - Updated the command to use the request serializer before writing to the TCP
   connection.
 - Documented the initial request serializer in `docs/http-request.md`.
+- Added URL helpers that use Go's `net/url` parser, then explicitly derive the
+  TCP address, `Host` header, and HTTP request target.
+- Added default port handling for `http` and `https`. The command still rejects
+  `https` before dialing because TLS support is intentionally a later step.
+- Updated the CLI to accept a URL positional argument while keeping `-addr`,
+  `-host`, and `-target` for lower-level observation.
+- Documented URL handling in `docs/url-handling.md`.

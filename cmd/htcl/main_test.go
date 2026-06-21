@@ -52,6 +52,46 @@ func TestRunWritesHTTPRequestAndPrintsParsedResponse(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsURL(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/hello?name=htcl"
+	err = run([]string{"-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.HasPrefix(request, "GET /hello?name=htcl HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
+	}
+	if !strings.Contains(request, "Host: "+listener.Addr().String()+"\r\n") {
+		t.Fatalf("missing Host header:\n%s", request)
+	}
+}
+
+func TestRunRejectsHTTPSUntilTLSIsImplemented(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"https://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "https URLs require TLS support") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunRejectsTargetWithoutLeadingSlash(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

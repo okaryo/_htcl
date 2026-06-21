@@ -26,20 +26,61 @@ func run(args []string, stdout, stderr io.Writer) error {
 	address := flags.String("addr", "127.0.0.1:8080", "TCP address to connect to")
 	host := flags.String("host", "", "HTTP Host header value; defaults to -addr")
 	target := flags.String("target", "/", "HTTP request target")
+	rawURL := flags.String("url", "", "HTTP URL to request")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 
+	if *rawURL == "" && flags.NArg() > 0 {
+		*rawURL = flags.Arg(0)
+	}
+	if *rawURL != "" {
+		return getURL(*rawURL, *timeout, stdout, stderr)
+	}
+
 	if *host == "" {
 		*host = *address
 	}
 
-	return getHTTP(*address, *host, *target, *timeout, stdout, stderr)
+	request, err := http1.NewRequest("GET", *target, []http1.HeaderField{
+		{Name: "Host", Value: *host},
+		{Name: "User-Agent", Value: "htcl/0.1"},
+		{Name: "Connection", Value: "close"},
+	}, nil)
+	if err != nil {
+		return err
+	}
+
+	return getHTTP(*address, request, *timeout, stdout, stderr)
 }
 
-func getHTTP(address, host, target string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL string, timeout time.Duration, stdout, stderr io.Writer) error {
+	u, err := http1.ParseURL(rawURL)
+	if err != nil {
+		return err
+	}
+	if u.Scheme == "https" {
+		return fmt.Errorf("https URLs require TLS support, which is not implemented yet")
+	}
+
+	address, err := http1.TCPAddressForURL(u)
+	if err != nil {
+		return err
+	}
+	request, err := http1.NewRequestForURL("GET", u, []http1.HeaderField{
+		{Name: "User-Agent", Value: "htcl/0.1"},
+		{Name: "Connection", Value: "close"},
+	}, nil)
+	if err != nil {
+		return err
+	}
+
+	return getHTTP(address, request, timeout, stdout, stderr)
+}
+
+func getHTTP(address string, request *http1.Request, timeout time.Duration, stdout, stderr io.Writer) error {
 	dialer := net.Dialer{Timeout: timeout}
 
 	fmt.Fprintf(stderr, "dialing tcp %s\n", address)
@@ -48,15 +89,6 @@ func getHTTP(address, host, target string, timeout time.Duration, stdout, stderr
 		return fmt.Errorf("dial tcp %s: %w", address, err)
 	}
 	defer conn.Close()
-
-	request, err := http1.NewRequest("GET", target, []http1.HeaderField{
-		{Name: "Host", Value: host},
-		{Name: "User-Agent", Value: "htcl/0.1"},
-		{Name: "Connection", Value: "close"},
-	}, nil)
-	if err != nil {
-		return err
-	}
 
 	var requestBytes bytes.Buffer
 	if err := http1.WriteRequest(&requestBytes, request); err != nil {
