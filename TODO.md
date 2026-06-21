@@ -103,7 +103,7 @@ Questions to answer:
 
 ### 5. Connection Management
 
-- [ ] Handle one request per TCP connection.
+- [x] Handle one request per TCP connection.
 - [ ] Support `Connection: close`.
 - [x] Decide whether a response requires closing the connection.
 - [ ] Implement basic HTTP/1.1 keep-alive reuse.
@@ -261,3 +261,6 @@ changes.
   `Connection: keep-alive`.
 - Documented the current connection-management boundary in
   `docs/connection-management.md`.
+- Added `http1.Client.Do` as an explicit one-request-per-connection client
+  path. It dials, writes one request, reads one response, and closes the TCP
+  connection before returning.

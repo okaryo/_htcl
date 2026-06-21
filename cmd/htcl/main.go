@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"time"
 
@@ -81,54 +79,17 @@ func getURL(rawURL string, timeout time.Duration, stdout, stderr io.Writer) erro
 }
 
 func getHTTP(address string, request *http1.Request, timeout time.Duration, stdout, stderr io.Writer) error {
-	dialer := net.Dialer{Timeout: timeout}
-
 	fmt.Fprintf(stderr, "dialing tcp %s\n", address)
-	conn, err := dialer.Dial("tcp", address)
-	if err != nil {
-		return fmt.Errorf("dial tcp %s: %w", address, err)
-	}
-	defer conn.Close()
-
-	var requestBytes bytes.Buffer
-	if err := http1.WriteRequest(&requestBytes, request); err != nil {
-		return fmt.Errorf("serialize HTTP request: %w", err)
-	}
-
-	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-		return fmt.Errorf("set write deadline: %w", err)
-	}
-
-	fmt.Fprintf(stderr, "writing HTTP request (%d bytes)\n", requestBytes.Len())
-	if err := writeAll(conn, requestBytes.Bytes()); err != nil {
-		return fmt.Errorf("write HTTP request: %w", err)
-	}
-
-	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return fmt.Errorf("set read deadline: %w", err)
-	}
-
+	fmt.Fprintln(stderr, "writing HTTP request")
 	fmt.Fprintln(stderr, "reading HTTP response")
-	response, err := http1.ReadResponse(conn)
+
+	client := http1.Client{Timeout: timeout}
+	response, err := client.Do(address, request)
 	if err != nil {
-		return fmt.Errorf("read HTTP response: %w", err)
+		return err
 	}
 
 	return writeResponse(stdout, response)
-}
-
-func writeAll(w io.Writer, p []byte) error {
-	for len(p) > 0 {
-		n, err := w.Write(p)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-		p = p[n:]
-	}
-	return nil
 }
 
 func writeResponse(w io.Writer, response *http1.Response) error {

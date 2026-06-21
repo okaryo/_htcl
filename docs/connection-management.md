@@ -3,9 +3,29 @@
 The current client still opens one TCP connection per request and sends
 `Connection: close`.
 
-This document records the first smaller connection-management step: deciding
-whether a parsed response says the connection should be closed or could be
-reused later.
+This document records the current smaller connection-management steps:
+
+- Decide whether a parsed response says the connection should be closed or
+  could be reused later.
+- Make the current one-request-per-connection behavior explicit in the client
+  implementation.
+
+## Current Client Lifecycle
+
+`Client.Do` currently follows this sequence:
+
+```text
+Dial TCP address
+  -> serialize request
+  -> set write deadline
+  -> write request bytes
+  -> set read deadline
+  -> read one response
+  -> close the TCP connection
+```
+
+The connection is closed even if the response would be reusable under HTTP/1.1.
+This keeps the lifecycle visible before introducing idle connection ownership.
 
 ## Current Decision Rule
 
