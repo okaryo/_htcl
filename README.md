@@ -111,3 +111,5 @@ later learning steps.
 - `docs/http-response.md`: notes on the first HTTP response parsing step.
 - `docs/url-handling.md`: notes on URL-derived addresses, host headers, and
   request targets.
+- `docs/connection-management.md`: notes on connection close and reuse
+  decisions.

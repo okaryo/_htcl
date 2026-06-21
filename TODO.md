@@ -105,6 +105,7 @@ Questions to answer:
 
 - [ ] Handle one request per TCP connection.
 - [ ] Support `Connection: close`.
+- [x] Decide whether a response requires closing the connection.
 - [ ] Implement basic HTTP/1.1 keep-alive reuse.
 - [ ] Track idle connections.
 - [ ] Add idle connection timeouts.
@@ -255,3 +256,8 @@ changes.
 - Updated the CLI to accept a URL positional argument while keeping `-addr`,
   `-host`, and `-target` for lower-level observation.
 - Documented URL handling in `docs/url-handling.md`.
+- Added response connection-close decision helpers for HTTP/1.1 default
+  keep-alive, HTTP/1.0 default close, `Connection: close`, and HTTP/1.0
+  `Connection: keep-alive`.
+- Documented the current connection-management boundary in
+  `docs/connection-management.md`.
