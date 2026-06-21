@@ -107,4 +107,5 @@ later learning steps.
 - `AGENTS.md`: working instructions for AI agents and future contributors.
 - `TODO.md`: living learning roadmap and progress tracker.
 - `docs/tcp-http-get.md`: notes on the first raw TCP HTTP GET step.
+- `docs/http-request.md`: notes on the first HTTP request serialization step.
 - `docs/http-response.md`: notes on the first HTTP response parsing step.

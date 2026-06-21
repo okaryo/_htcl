@@ -73,12 +73,12 @@ Questions to answer:
 
 ### 3. Request Model And Serialization
 
-- [ ] Define a small request model.
-- [ ] Serialize method, target, version, and headers.
-- [ ] Set `Host` automatically from the URL.
-- [ ] Support query strings.
-- [ ] Support fixed-length request bodies.
-- [ ] Validate invalid request combinations.
+- [x] Define a small request model.
+- [x] Serialize method, target, version, and headers.
+- [x] Set `Host` automatically from the URL.
+- [x] Support query strings.
+- [x] Support fixed-length request bodies.
+- [x] Validate invalid request combinations.
 
 Questions to answer:
 
@@ -239,3 +239,12 @@ changes.
 - Updated the command to parse the response from the TCP connection before
   printing it.
 - Documented the initial response parser in `docs/http-response.md`.
+- Added a small HTTP request model and serializer so request bytes are no
+  longer assembled directly inside the command.
+- Added `NewRequestForURL` to derive `Host` and request target from a parsed
+  URL while leaving broader URL handling for the next learning step.
+- Added fixed-length request body serialization with automatic
+  `Content-Length` generation and mismatch validation.
+- Updated the command to use the request serializer before writing to the TCP
+  connection.
+- Documented the initial request serializer in `docs/http-request.md`.

@@ -142,11 +142,8 @@ func ReadHeaderFields(r *LineReader) ([]HeaderField, error) {
 			return nil, fmt.Errorf("malformed header field %q", line)
 		}
 		name = strings.TrimSpace(name)
-		if name == "" {
-			return nil, fmt.Errorf("header field name is empty")
-		}
-		if strings.ContainsAny(name, " \t") {
-			return nil, fmt.Errorf("header field name contains whitespace")
+		if err := validateHeaderFieldName(name); err != nil {
+			return nil, err
 		}
 
 		fields = append(fields, HeaderField{
@@ -204,6 +201,16 @@ func rejectUnsupportedTransferEncoding(fields []HeaderField) error {
 			continue
 		}
 		return fmt.Errorf("unsupported Transfer-Encoding %q", field.Value)
+	}
+	return nil
+}
+
+func validateHeaderFieldName(name string) error {
+	if name == "" {
+		return fmt.Errorf("header field name is empty")
+	}
+	if strings.ContainsAny(name, " \t\r\n:") {
+		return fmt.Errorf("header field name %q is invalid", name)
 	}
 	return nil
 }

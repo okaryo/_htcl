@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/okaryo/_htcl/internal/http1"
@@ -35,9 +35,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if *host == "" {
 		*host = *address
 	}
-	if *target == "" || !strings.HasPrefix(*target, "/") {
-		return fmt.Errorf("target must start with /")
-	}
 
 	return getHTTP(*address, *host, *target, *timeout, stdout, stderr)
 }
@@ -52,18 +49,26 @@ func getHTTP(address, host, target string, timeout time.Duration, stdout, stderr
 	}
 	defer conn.Close()
 
-	request := fmt.Sprintf(
-		"GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: htcl/0.1\r\nConnection: close\r\n\r\n",
-		target,
-		host,
-	)
+	request, err := http1.NewRequest("GET", target, []http1.HeaderField{
+		{Name: "Host", Value: host},
+		{Name: "User-Agent", Value: "htcl/0.1"},
+		{Name: "Connection", Value: "close"},
+	}, nil)
+	if err != nil {
+		return err
+	}
+
+	var requestBytes bytes.Buffer
+	if err := http1.WriteRequest(&requestBytes, request); err != nil {
+		return fmt.Errorf("serialize HTTP request: %w", err)
+	}
 
 	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 		return fmt.Errorf("set write deadline: %w", err)
 	}
 
-	fmt.Fprintf(stderr, "writing HTTP request (%d bytes)\n", len(request))
-	if err := writeAll(conn, []byte(request)); err != nil {
+	fmt.Fprintf(stderr, "writing HTTP request (%d bytes)\n", requestBytes.Len())
+	if err := writeAll(conn, requestBytes.Bytes()); err != nil {
 		return fmt.Errorf("write HTTP request: %w", err)
 	}
 
