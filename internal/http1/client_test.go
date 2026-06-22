@@ -89,6 +89,52 @@ func TestClientDoOverridesConnectionKeepAliveForOneShotRequest(t *testing.T) {
 	<-closed
 }
 
+func TestConnectionRoundTripCanUseSameTCPConnectionTwice(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go serveTwoRequestsOnOneConnection(t, listener, requests)
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	connection := NewConnection(conn, 2*time.Second)
+	first := newTestRequest(t, "/first")
+	second := newTestRequest(t, "/second")
+
+	firstResponse, err := connection.RoundTrip(first)
+	if err != nil {
+		t.Fatalf("first RoundTrip: %v", err)
+	}
+	if got := string(firstResponse.Body); got != "one" {
+		t.Fatalf("first body = %q", got)
+	}
+
+	secondResponse, err := connection.RoundTrip(second)
+	if err != nil {
+		t.Fatalf("second RoundTrip: %v", err)
+	}
+	if got := string(secondResponse.Body); got != "two" {
+		t.Fatalf("second body = %q", got)
+	}
+
+	firstRequest := <-requests
+	if !strings.HasPrefix(firstRequest, "GET /first HTTP/1.1\r\n") {
+		t.Fatalf("first request mismatch:\n%s", firstRequest)
+	}
+	secondRequest := <-requests
+	if !strings.HasPrefix(secondRequest, "GET /second HTTP/1.1\r\n") {
+		t.Fatalf("second request mismatch:\n%s", secondRequest)
+	}
+}
+
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
 	t.Helper()
 
@@ -127,4 +173,65 @@ func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string
 
 	_, err = reader.ReadByte()
 	closed <- err == io.EOF
+}
+
+func serveTwoRequestsOnOneConnection(t *testing.T, listener net.Listener, requests chan<- string) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	responses := []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+	}
+	for _, response := range responses {
+		request, err := readHeaderBlock(reader)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		requests <- request
+
+		if _, err := io.WriteString(conn, response); err != nil {
+			t.Errorf("write response: %v", err)
+			return
+		}
+	}
+}
+
+func readHeaderBlock(reader *bufio.Reader) (string, error) {
+	var request strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		request.WriteString(line)
+		if line == "\r\n" {
+			return request.String(), nil
+		}
+	}
+}
+
+func newTestRequest(t *testing.T, target string) *Request {
+	t.Helper()
+
+	request, err := NewRequest("GET", target, []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	return request
 }

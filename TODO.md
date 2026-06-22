@@ -106,6 +106,7 @@ Questions to answer:
 - [x] Handle one request per TCP connection.
 - [x] Support `Connection: close`.
 - [x] Decide whether a response requires closing the connection.
+- [x] Separate request/response exchange from connection ownership.
 - [ ] Implement basic HTTP/1.1 keep-alive reuse.
 - [ ] Track idle connections.
 - [ ] Add idle connection timeouts.
@@ -267,3 +268,6 @@ changes.
 - Moved one-shot `Connection: close` handling into `Client.Do`. The client
   clones the request before adding or replacing the header so caller-owned
   request values are not mutated.
+- Added `Connection.RoundTrip` for sending one request and reading one response
+  on an existing TCP connection without taking ownership of closing it. This
+  prepares the code for keep-alive reuse without adding a pool yet.
