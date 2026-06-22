@@ -112,7 +112,7 @@ Questions to answer:
 - [x] Track idle connections.
 - [x] Add idle connection timeouts.
 - [x] Close connections on cancellation.
-- [ ] Confirm resources are released after requests complete.
+- [x] Confirm resources are released after requests complete.
 
 Questions to answer:
 
@@ -282,3 +282,6 @@ changes.
   before the next reusable request dials a replacement connection.
 - Added context-aware request paths that close the active TCP connection when
   the context is canceled so blocked reads or writes can return promptly.
+- Added cleanup verification for idle connections. `CloseIdleConnections` now
+  has coverage that confirms retained connections are closed and removed from
+  the idle map.

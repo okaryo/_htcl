@@ -113,3 +113,10 @@ Future steps need to account for more conditions before reuse is production-like
 `DoContext`, `DoReusableContext`, and `RoundTripContext` close the active TCP
 connection when the context is canceled. Closing the connection wakes blocked
 `Read` or `Write` calls, and the connection is not returned to the idle map.
+
+## Current Resource Cleanup
+
+`Client.CloseIdleConnections` closes all idle TCP connections currently retained
+by the minimal reuse path and removes them from the idle map. One-shot requests,
+non-reusable responses, errors, cancellations, and expired idle connections also
+close their active connection instead of keeping it for reuse.

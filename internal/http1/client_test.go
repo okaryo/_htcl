@@ -400,6 +400,43 @@ func TestClientDoReusableContextClosesConnectionOnCancellation(t *testing.T) {
 	}
 }
 
+func TestClientCloseIdleConnectionsReleasesIdleConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	closed := make(chan bool, 1)
+	go serveReusableResponseThenWaitForClientClose(t, listener, closed)
+
+	client := &Client{Timeout: 2 * time.Second}
+	response, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/idle"))
+	if err != nil {
+		t.Fatalf("DoReusable: %v", err)
+	}
+	if got := string(response.Body); got != "idle" {
+		t.Fatalf("body = %q", got)
+	}
+	if got := client.idleConnectionCount(); got != 1 {
+		t.Fatalf("idle connection count = %d, want 1", got)
+	}
+
+	client.CloseIdleConnections()
+
+	if got := client.idleConnectionCount(); got != 0 {
+		t.Fatalf("idle connection count = %d, want 0", got)
+	}
+	select {
+	case ok := <-closed:
+		if !ok {
+			t.Fatal("server did not observe client connection close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for idle connection close")
+	}
+}
+
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
 	t.Helper()
 
@@ -535,6 +572,35 @@ func serveRequestThenWaitForClientClose(t *testing.T, listener net.Listener, clo
 	reader := bufio.NewReader(conn)
 	if _, err := readHeaderBlock(reader); err != nil {
 		t.Errorf("read request: %v", err)
+		return
+	}
+
+	_, err = reader.ReadByte()
+	closed <- err == io.EOF
+}
+
+func serveReusableResponseThenWaitForClientClose(t *testing.T, listener net.Listener, closed chan<- bool) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	if _, err := readHeaderBlock(reader); err != nil {
+		t.Errorf("read request: %v", err)
+		return
+	}
+	if _, err := io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nidle"); err != nil {
+		t.Errorf("write response: %v", err)
 		return
 	}
 

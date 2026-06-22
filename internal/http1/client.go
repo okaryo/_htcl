@@ -113,6 +113,10 @@ func (c *Client) CloseIdleConnections() {
 	}
 }
 
+func (c *Client) idleConnectionCount() int {
+	return len(c.idle)
+}
+
 func (c *Client) takeIdle(address string) *Connection {
 	idle, ok := c.idle[address]
 	if !ok {
