@@ -116,6 +116,9 @@ func TestConnectionRoundTripCanUseSameTCPConnectionTwice(t *testing.T) {
 	if got := string(firstResponse.Body); got != "one" {
 		t.Fatalf("first body = %q", got)
 	}
+	if !connection.Reusable() {
+		t.Fatal("connection should be reusable after first response")
+	}
 
 	secondResponse, err := connection.RoundTrip(second)
 	if err != nil {
@@ -123,6 +126,9 @@ func TestConnectionRoundTripCanUseSameTCPConnectionTwice(t *testing.T) {
 	}
 	if got := string(secondResponse.Body); got != "two" {
 		t.Fatalf("second body = %q", got)
+	}
+	if !connection.Reusable() {
+		t.Fatal("connection should be reusable after second response")
 	}
 
 	firstRequest := <-requests
@@ -133,6 +139,98 @@ func TestConnectionRoundTripCanUseSameTCPConnectionTwice(t *testing.T) {
 	if !strings.HasPrefix(secondRequest, "GET /second HTTP/1.1\r\n") {
 		t.Fatalf("second request mismatch:\n%s", secondRequest)
 	}
+}
+
+func TestConnectionRoundTripMarksConnectionNotReusableForRequestClose(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveResponsesOnOneConnection(t, listener, requests, []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
+	})
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	request, err := NewRequest("GET", "/close", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+		{Name: "Connection", Value: "close"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	connection := NewConnection(conn, 2*time.Second)
+	if _, err := connection.RoundTrip(request); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if connection.Reusable() {
+		t.Fatal("connection should not be reusable after request Connection: close")
+	}
+	<-requests
+}
+
+func TestConnectionRoundTripMarksConnectionNotReusableForResponseClose(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveResponsesOnOneConnection(t, listener, requests, []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+	})
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	connection := NewConnection(conn, 2*time.Second)
+	if _, err := connection.RoundTrip(newTestRequest(t, "/close")); err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if connection.Reusable() {
+		t.Fatal("connection should not be reusable after response Connection: close")
+	}
+	<-requests
+}
+
+func TestConnectionRoundTripMarksConnectionNotReusableAfterError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveResponsesOnOneConnection(t, listener, requests, []string{
+		"not an HTTP response\r\n\r\n",
+	})
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	connection := NewConnection(conn, 2*time.Second)
+	if _, err := connection.RoundTrip(newTestRequest(t, "/bad")); err == nil {
+		t.Fatal("expected an error")
+	}
+	if connection.Reusable() {
+		t.Fatal("connection should not be reusable after response parse error")
+	}
+	<-requests
 }
 
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
@@ -191,10 +289,34 @@ func serveTwoRequestsOnOneConnection(t *testing.T, listener net.Listener, reques
 	}
 
 	reader := bufio.NewReader(conn)
-	responses := []string{
+	serveResponsesOnReader(t, conn, reader, requests, []string{
 		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
 		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+	})
+}
+
+func serveResponsesOnOneConnection(t *testing.T, listener net.Listener, requests chan<- string, responses []string) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
 	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	serveResponsesOnReader(t, conn, reader, requests, responses)
+}
+
+func serveResponsesOnReader(t *testing.T, conn net.Conn, reader *bufio.Reader, requests chan<- string, responses []string) {
+	t.Helper()
+
 	for _, response := range responses {
 		request, err := readHeaderBlock(reader)
 		if err != nil {

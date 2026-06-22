@@ -40,16 +40,23 @@ by the caller.
 TCP connection:
 
 ```text
+mark connection not reusable
 serialize request
   -> set write deadline
   -> write request bytes
   -> set read deadline
   -> read one response
+  -> mark connection reusable only when request/response allow it
 ```
 
 Unlike `Client.Do`, `Connection.RoundTrip` does not close the TCP connection.
 This makes it possible to study multiple HTTP request/response exchanges on the
 same connection before adding an idle connection pool.
+
+`Connection.Reusable` reports whether the connection is still a candidate for
+reuse after the last round trip. A connection is not reusable after a write,
+read, or parse error. It is also not reusable when either side sends
+`Connection: close`.
 
 ## Current Decision Rule
 

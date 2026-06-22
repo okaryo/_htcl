@@ -13,15 +13,21 @@ type Client struct {
 }
 
 type Connection struct {
-	conn    net.Conn
-	timeout time.Duration
+	conn     net.Conn
+	timeout  time.Duration
+	reusable bool
 }
 
 func NewConnection(conn net.Conn, timeout time.Duration) *Connection {
 	return &Connection{
-		conn:    conn,
-		timeout: timeout,
+		conn:     conn,
+		timeout:  timeout,
+		reusable: true,
 	}
+}
+
+func (c *Connection) Reusable() bool {
+	return c != nil && c.conn != nil && c.reusable
 }
 
 func (c Client) Do(address string, request *Request) (*Response, error) {
@@ -49,6 +55,7 @@ func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 	if c == nil || c.conn == nil {
 		return nil, fmt.Errorf("connection is nil")
 	}
+	c.reusable = false
 
 	timeout := c.timeout
 	if timeout == 0 {
@@ -75,6 +82,7 @@ func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 		return nil, fmt.Errorf("read HTTP response: %w", err)
 	}
 
+	c.reusable = !HasConnectionToken(request.HeaderFields, "close") && !response.ShouldCloseConnection()
 	return response, nil
 }
 
