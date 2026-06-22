@@ -106,5 +106,10 @@ Future steps need to account for more conditions before reuse is production-like
 
 - Multiple idle connections per address.
 - Concurrent use protection.
-- Cancellation while a connection is checked out.
 - More response body framing modes such as chunked transfer.
+
+## Current Cancellation Behavior
+
+`DoContext`, `DoReusableContext`, and `RoundTripContext` close the active TCP
+connection when the context is canceled. Closing the connection wakes blocked
+`Read` or `Write` calls, and the connection is not returned to the idle map.

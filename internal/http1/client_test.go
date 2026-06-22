@@ -2,6 +2,8 @@ package http1
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -364,6 +366,40 @@ func TestClientDoReusableDiscardsExpiredIdleConnection(t *testing.T) {
 	<-accepted
 }
 
+func TestClientDoReusableContextClosesConnectionOnCancellation(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	closed := make(chan bool, 1)
+	go serveRequestThenWaitForClientClose(t, listener, closed)
+
+	client := &Client{Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err = client.DoReusableContext(ctx, listener.Addr().String(), newTestRequest(t, "/cancel"))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline error, got %v", err)
+	}
+
+	select {
+	case ok := <-closed:
+		if !ok {
+			t.Fatal("server did not observe client connection close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for client connection close")
+	}
+}
+
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
 	t.Helper()
 
@@ -479,6 +515,31 @@ func serveOneResponsePerAcceptedConnection(t *testing.T, listener net.Listener, 
 		}
 		conn.Close()
 	}
+}
+
+func serveRequestThenWaitForClientClose(t *testing.T, listener net.Listener, closed chan<- bool) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	if _, err := readHeaderBlock(reader); err != nil {
+		t.Errorf("read request: %v", err)
+		return
+	}
+
+	_, err = reader.ReadByte()
+	closed <- err == io.EOF
 }
 
 func serveResponsesOnOneConnection(t *testing.T, listener net.Listener, requests chan<- string, responses []string) {

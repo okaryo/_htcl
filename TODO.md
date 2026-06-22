@@ -111,7 +111,7 @@ Questions to answer:
 - [x] Implement basic HTTP/1.1 keep-alive reuse.
 - [x] Track idle connections.
 - [x] Add idle connection timeouts.
-- [ ] Close connections on cancellation.
+- [x] Close connections on cancellation.
 - [ ] Confirm resources are released after requests complete.
 
 Questions to answer:
@@ -280,3 +280,5 @@ changes.
   remains true.
 - Added `Client.IdleTimeout` so stale idle connections are closed and discarded
   before the next reusable request dials a replacement connection.
+- Added context-aware request paths that close the active TCP connection when
+  the context is canceled so blocked reads or writes can return promptly.

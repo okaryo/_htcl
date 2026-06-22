@@ -2,6 +2,7 @@ package http1
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -39,6 +40,14 @@ func (c *Connection) Reusable() bool {
 }
 
 func (c Client) Do(address string, request *Request) (*Response, error) {
+	return c.DoContext(context.Background(), address, request)
+}
+
+func (c Client) DoContext(ctx context.Context, address string, request *Request) (*Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
@@ -50,16 +59,23 @@ func (c Client) Do(address string, request *Request) (*Response, error) {
 	request.SetHeader("Connection", "close")
 
 	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.Dial("tcp", address)
+	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
 	}
 	defer conn.Close()
 
-	return NewConnection(conn, timeout).RoundTrip(request)
+	return NewConnection(conn, timeout).RoundTripContext(ctx, request)
 }
 
 func (c *Client) DoReusable(address string, request *Request) (*Response, error) {
+	return c.DoReusableContext(context.Background(), address, request)
+}
+
+func (c *Client) DoReusableContext(ctx context.Context, address string, request *Request) (*Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if c.idle == nil {
 		c.idle = make(map[string]idleConnection)
 	}
@@ -67,13 +83,13 @@ func (c *Client) DoReusable(address string, request *Request) (*Response, error)
 	connection := c.takeIdle(address)
 	if connection == nil {
 		var err error
-		connection, err = c.dial(address)
+		connection, err = c.dialContext(ctx, address)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	response, err := connection.RoundTrip(request)
+	response, err := connection.RoundTripContext(ctx, request)
 	if err != nil {
 		connection.Close()
 		return nil, err
@@ -133,14 +149,14 @@ func (c *Client) currentTime() time.Time {
 	return time.Now()
 }
 
-func (c *Client) dial(address string) (*Connection, error) {
+func (c *Client) dialContext(ctx context.Context, address string) (*Connection, error) {
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 
 	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.Dial("tcp", address)
+	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
 	}
@@ -148,10 +164,20 @@ func (c *Client) dial(address string) (*Connection, error) {
 }
 
 func (c *Connection) RoundTrip(request *Request) (*Response, error) {
+	return c.RoundTripContext(context.Background(), request)
+}
+
+func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if c == nil || c.conn == nil {
 		return nil, fmt.Errorf("connection is nil")
 	}
 	c.reusable = false
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	timeout := c.timeout
 	if timeout == 0 {
@@ -163,10 +189,16 @@ func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 		return nil, fmt.Errorf("serialize HTTP request: %w", err)
 	}
 
+	stopCancelWatch := closeConnOnCancel(ctx, c.conn)
+	defer stopCancelWatch()
+
 	if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, fmt.Errorf("set write deadline: %w", err)
 	}
 	if err := writeAll(c.conn, requestBytes.Bytes()); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("request canceled: %w", ctxErr)
+		}
 		return nil, fmt.Errorf("write HTTP request: %w", err)
 	}
 
@@ -175,11 +207,28 @@ func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 	}
 	response, err := ReadResponse(c.conn)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("request canceled: %w", ctxErr)
+		}
 		return nil, fmt.Errorf("read HTTP response: %w", err)
 	}
 
 	c.reusable = !HasConnectionToken(request.HeaderFields, "close") && !response.ShouldCloseConnection()
 	return response, nil
+}
+
+func closeConnOnCancel(ctx context.Context, conn net.Conn) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-done:
+		}
+	}()
+	return func() {
+		close(done)
+	}
 }
 
 func (c *Connection) Close() error {
