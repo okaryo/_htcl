@@ -25,6 +25,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	host := flags.String("host", "", "HTTP Host header value; defaults to -addr")
 	target := flags.String("target", "/", "HTTP request target")
 	rawURL := flags.String("url", "", "HTTP URL to request")
+	method := flags.String("method", "GET", "HTTP method")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 
 	if err := flags.Parse(args); err != nil {
@@ -35,14 +36,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
 		*host = *address
 	}
 
-	request, err := http1.NewRequest("GET", *target, []http1.HeaderField{
+	request, err := http1.NewRequest(*method, *target, []http1.HeaderField{
 		{Name: "Host", Value: *host},
 		{Name: "User-Agent", Value: "htcl/0.1"},
 	}, nil)
@@ -53,7 +54,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -66,7 +67,7 @@ func getURL(rawURL string, timeout time.Duration, stdout, stderr io.Writer) erro
 	if err != nil {
 		return err
 	}
-	request, err := http1.NewRequestForURL("GET", u, []http1.HeaderField{
+	request, err := http1.NewRequestForURL(method, u, []http1.HeaderField{
 		{Name: "User-Agent", Value: "htcl/0.1"},
 	}, nil)
 	if err != nil {

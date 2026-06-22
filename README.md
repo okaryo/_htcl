@@ -84,7 +84,7 @@ The current implementation is a minimal HTTP/1.1 GET client.
 Run the command against a local HTTP server:
 
 ```sh
-go run ./cmd/htcl http://127.0.0.1:8080/hello
+go run ./cmd/htcl -method GET http://127.0.0.1:8080/hello
 ```
 
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
@@ -113,3 +113,5 @@ later learning steps.
   request targets.
 - `docs/connection-management.md`: notes on connection close and reuse
   decisions.
+- `docs/client-api-cli.md`: notes on the current client API and command-line
+  shape.

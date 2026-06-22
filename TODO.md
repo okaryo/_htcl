@@ -123,9 +123,9 @@ Questions to answer:
 
 ### 6. Client API And CLI Shape
 
-- [ ] Define a minimal client API.
-- [ ] Add a command for making requests from the terminal.
-- [ ] Support method selection.
+- [x] Define a minimal client API.
+- [x] Add a command for making requests from the terminal.
+- [x] Support method selection.
 - [ ] Support custom headers.
 - [ ] Support request body input.
 - [ ] Print status, headers, and body in useful modes.
@@ -285,3 +285,7 @@ changes.
 - Added cleanup verification for idle connections. `CloseIdleConnections` now
   has coverage that confirms retained connections are closed and removed from
   the idle map.
+- Documented the current split between `internal/http1` client behavior and the
+  `cmd/htcl` command-line interface.
+- Added `-method` so the CLI can serialize methods other than `GET` while still
+  using the same request model and validation.
