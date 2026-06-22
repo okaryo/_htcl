@@ -65,6 +65,7 @@ connection per TCP address:
 
 ```text
 look up idle connection for address
+  -> close and discard it when idle timeout has expired
   -> dial when no reusable connection exists
   -> round trip on the connection
   -> keep it when Connection.Reusable is true
@@ -75,6 +76,10 @@ This is intentionally smaller than a production connection pool. It is enough
 to observe that two requests to the same address can use the same TCP
 connection when both responses are fixed-length and neither side requests
 `Connection: close`.
+
+Idle connections expire after `Client.IdleTimeout`. When `IdleTimeout` is zero,
+the current default is 90 seconds. Expired idle connections are closed before a
+new connection is dialed.
 
 ## Current Decision Rule
 
@@ -94,13 +99,12 @@ case-insensitively.
 
 ## Current Limitation
 
-This step only decides whether a connection is theoretically reusable. The
-client does not actually reuse connections yet.
+The current reuse model is intentionally small and single-threaded. It is useful
+for observing keep-alive mechanics, but it is not a production connection pool.
 
 Future steps need to account for more conditions before reuse is production-like:
 
 - Multiple idle connections per address.
 - Concurrent use protection.
-- Idle timeout cleanup.
 - Cancellation while a connection is checked out.
 - More response body framing modes such as chunked transfer.

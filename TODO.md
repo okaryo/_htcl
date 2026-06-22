@@ -110,7 +110,7 @@ Questions to answer:
 - [x] Track whether a connection remains reusable after a round trip.
 - [x] Implement basic HTTP/1.1 keep-alive reuse.
 - [x] Track idle connections.
-- [ ] Add idle connection timeouts.
+- [x] Add idle connection timeouts.
 - [ ] Close connections on cancellation.
 - [ ] Confirm resources are released after requests complete.
 
@@ -278,3 +278,5 @@ changes.
 - Added `Client.DoReusable`, a minimal keep-alive path that stores at most one
   idle connection per TCP address and reuses it when `Connection.Reusable`
   remains true.
+- Added `Client.IdleTimeout` so stale idle connections are closed and discarded
+  before the next reusable request dials a replacement connection.

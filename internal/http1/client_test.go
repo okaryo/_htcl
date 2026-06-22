@@ -320,6 +320,50 @@ func TestClientDoReusableDiscardsConnectionWhenResponseCloses(t *testing.T) {
 	<-accepted
 }
 
+func TestClientDoReusableDiscardsExpiredIdleConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan struct{}, 2)
+	go serveOneResponsePerAcceptedConnection(t, listener, accepted, []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+	})
+
+	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	client := &Client{
+		Timeout:     2 * time.Second,
+		IdleTimeout: time.Second,
+		now: func() time.Time {
+			return now
+		},
+	}
+	defer client.CloseIdleConnections()
+
+	firstResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/first"))
+	if err != nil {
+		t.Fatalf("first DoReusable: %v", err)
+	}
+	if got := string(firstResponse.Body); got != "one" {
+		t.Fatalf("first body = %q", got)
+	}
+
+	now = now.Add(2 * time.Second)
+	secondResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/second"))
+	if err != nil {
+		t.Fatalf("second DoReusable: %v", err)
+	}
+	if got := string(secondResponse.Body); got != "two" {
+		t.Fatalf("second body = %q", got)
+	}
+
+	<-accepted
+	<-accepted
+}
+
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
 	t.Helper()
 

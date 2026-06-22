@@ -9,8 +9,15 @@ import (
 )
 
 type Client struct {
-	Timeout time.Duration
-	idle    map[string]*Connection
+	Timeout     time.Duration
+	IdleTimeout time.Duration
+	idle        map[string]idleConnection
+	now         func() time.Time
+}
+
+type idleConnection struct {
+	connection *Connection
+	idleAt     time.Time
 }
 
 type Connection struct {
@@ -54,18 +61,17 @@ func (c Client) Do(address string, request *Request) (*Response, error) {
 
 func (c *Client) DoReusable(address string, request *Request) (*Response, error) {
 	if c.idle == nil {
-		c.idle = make(map[string]*Connection)
+		c.idle = make(map[string]idleConnection)
 	}
 
-	connection := c.idle[address]
-	if connection == nil || !connection.Reusable() {
+	connection := c.takeIdle(address)
+	if connection == nil {
 		var err error
 		connection, err = c.dial(address)
 		if err != nil {
 			return nil, err
 		}
 	}
-	delete(c.idle, address)
 
 	response, err := connection.RoundTrip(request)
 	if err != nil {
@@ -73,7 +79,10 @@ func (c *Client) DoReusable(address string, request *Request) (*Response, error)
 		return nil, err
 	}
 	if connection.Reusable() {
-		c.idle[address] = connection
+		c.idle[address] = idleConnection{
+			connection: connection,
+			idleAt:     c.currentTime(),
+		}
 	} else {
 		connection.Close()
 	}
@@ -82,10 +91,46 @@ func (c *Client) DoReusable(address string, request *Request) (*Response, error)
 }
 
 func (c *Client) CloseIdleConnections() {
-	for address, connection := range c.idle {
-		connection.Close()
+	for address, idle := range c.idle {
+		idle.connection.Close()
 		delete(c.idle, address)
 	}
+}
+
+func (c *Client) takeIdle(address string) *Connection {
+	idle, ok := c.idle[address]
+	if !ok {
+		return nil
+	}
+	delete(c.idle, address)
+
+	if idle.connection == nil || !idle.connection.Reusable() {
+		if idle.connection != nil {
+			idle.connection.Close()
+		}
+		return nil
+	}
+	if c.idleExpired(idle.idleAt) {
+		idle.connection.Close()
+		return nil
+	}
+
+	return idle.connection
+}
+
+func (c *Client) idleExpired(idleAt time.Time) bool {
+	timeout := c.IdleTimeout
+	if timeout == 0 {
+		timeout = 90 * time.Second
+	}
+	return !idleAt.IsZero() && !c.currentTime().Before(idleAt.Add(timeout))
+}
+
+func (c *Client) currentTime() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 func (c *Client) dial(address string) (*Connection, error) {
