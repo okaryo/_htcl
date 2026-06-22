@@ -108,8 +108,8 @@ Questions to answer:
 - [x] Decide whether a response requires closing the connection.
 - [x] Separate request/response exchange from connection ownership.
 - [x] Track whether a connection remains reusable after a round trip.
-- [ ] Implement basic HTTP/1.1 keep-alive reuse.
-- [ ] Track idle connections.
+- [x] Implement basic HTTP/1.1 keep-alive reuse.
+- [x] Track idle connections.
 - [ ] Add idle connection timeouts.
 - [ ] Close connections on cancellation.
 - [ ] Confirm resources are released after requests complete.
@@ -275,3 +275,6 @@ changes.
 - Added `Connection.Reusable` state. A round trip now marks the connection
   reusable only when the request did not send `Connection: close`, the response
   does not require close, and no write/read/parse error occurred.
+- Added `Client.DoReusable`, a minimal keep-alive path that stores at most one
+  idle connection per TCP address and reuses it when `Connection.Reusable`
+  remains true.

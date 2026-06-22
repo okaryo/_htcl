@@ -58,6 +58,24 @@ reuse after the last round trip. A connection is not reusable after a write,
 read, or parse error. It is also not reusable when either side sends
 `Connection: close`.
 
+## Current Reuse Model
+
+`Client.DoReusable` is the first minimal reuse path. It keeps at most one idle
+connection per TCP address:
+
+```text
+look up idle connection for address
+  -> dial when no reusable connection exists
+  -> round trip on the connection
+  -> keep it when Connection.Reusable is true
+  -> close it otherwise
+```
+
+This is intentionally smaller than a production connection pool. It is enough
+to observe that two requests to the same address can use the same TCP
+connection when both responses are fixed-length and neither side requests
+`Connection: close`.
+
 ## Current Decision Rule
 
 `Response.ShouldCloseConnection` currently applies these HTTP/1.x rules:
@@ -79,10 +97,10 @@ case-insensitively.
 This step only decides whether a connection is theoretically reusable. The
 client does not actually reuse connections yet.
 
-Future steps need to account for more conditions before reuse is safe:
+Future steps need to account for more conditions before reuse is production-like:
 
-- The response body must be completely read.
-- The parser must know where the response body ends.
-- The connection must not have hit a network, timeout, or protocol error.
-- The client must not have requested `Connection: close`.
-- Idle connections need ownership and cleanup rules.
+- Multiple idle connections per address.
+- Concurrent use protection.
+- Idle timeout cleanup.
+- Cancellation while a connection is checked out.
+- More response body framing modes such as chunked transfer.

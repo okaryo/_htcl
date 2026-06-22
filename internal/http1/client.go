@@ -10,6 +10,7 @@ import (
 
 type Client struct {
 	Timeout time.Duration
+	idle    map[string]*Connection
 }
 
 type Connection struct {
@@ -51,6 +52,56 @@ func (c Client) Do(address string, request *Request) (*Response, error) {
 	return NewConnection(conn, timeout).RoundTrip(request)
 }
 
+func (c *Client) DoReusable(address string, request *Request) (*Response, error) {
+	if c.idle == nil {
+		c.idle = make(map[string]*Connection)
+	}
+
+	connection := c.idle[address]
+	if connection == nil || !connection.Reusable() {
+		var err error
+		connection, err = c.dial(address)
+		if err != nil {
+			return nil, err
+		}
+	}
+	delete(c.idle, address)
+
+	response, err := connection.RoundTrip(request)
+	if err != nil {
+		connection.Close()
+		return nil, err
+	}
+	if connection.Reusable() {
+		c.idle[address] = connection
+	} else {
+		connection.Close()
+	}
+
+	return response, nil
+}
+
+func (c *Client) CloseIdleConnections() {
+	for address, connection := range c.idle {
+		connection.Close()
+		delete(c.idle, address)
+	}
+}
+
+func (c *Client) dial(address string) (*Connection, error) {
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.Dial("tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
+	}
+	return NewConnection(conn, timeout), nil
+}
+
 func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 	if c == nil || c.conn == nil {
 		return nil, fmt.Errorf("connection is nil")
@@ -84,6 +135,16 @@ func (c *Connection) RoundTrip(request *Request) (*Response, error) {
 
 	c.reusable = !HasConnectionToken(request.HeaderFields, "close") && !response.ShouldCloseConnection()
 	return response, nil
+}
+
+func (c *Connection) Close() error {
+	if c == nil || c.conn == nil {
+		return nil
+	}
+	c.reusable = false
+	err := c.conn.Close()
+	c.conn = nil
+	return err
 }
 
 func writeAll(w io.Writer, p []byte) error {

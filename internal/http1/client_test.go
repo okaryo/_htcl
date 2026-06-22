@@ -233,6 +233,93 @@ func TestConnectionRoundTripMarksConnectionNotReusableAfterError(t *testing.T) {
 	<-requests
 }
 
+func TestClientDoReusableReusesIdleConnectionForSameAddress(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	accepted := make(chan struct{}, 1)
+	go serveTwoRequestsOnOneAcceptedConnection(t, listener, requests, accepted)
+
+	client := &Client{Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+
+	firstResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/first"))
+	if err != nil {
+		t.Fatalf("first DoReusable: %v", err)
+	}
+	if got := string(firstResponse.Body); got != "one" {
+		t.Fatalf("first body = %q", got)
+	}
+
+	secondResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/second"))
+	if err != nil {
+		t.Fatalf("second DoReusable: %v", err)
+	}
+	if got := string(secondResponse.Body); got != "two" {
+		t.Fatalf("second body = %q", got)
+	}
+
+	firstRequest := <-requests
+	if !strings.HasPrefix(firstRequest, "GET /first HTTP/1.1\r\n") {
+		t.Fatalf("first request mismatch:\n%s", firstRequest)
+	}
+	secondRequest := <-requests
+	if !strings.HasPrefix(secondRequest, "GET /second HTTP/1.1\r\n") {
+		t.Fatalf("second request mismatch:\n%s", secondRequest)
+	}
+
+	select {
+	case <-accepted:
+	default:
+		t.Fatal("server did not accept a connection")
+	}
+	select {
+	case <-accepted:
+		t.Fatal("client opened a second connection")
+	default:
+	}
+}
+
+func TestClientDoReusableDiscardsConnectionWhenResponseCloses(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan struct{}, 2)
+	go serveOneResponsePerAcceptedConnection(t, listener, accepted, []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\none",
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+	})
+
+	client := &Client{Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+
+	firstResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/first"))
+	if err != nil {
+		t.Fatalf("first DoReusable: %v", err)
+	}
+	if got := string(firstResponse.Body); got != "one" {
+		t.Fatalf("first body = %q", got)
+	}
+
+	secondResponse, err := client.DoReusable(listener.Addr().String(), newTestRequest(t, "/second"))
+	if err != nil {
+		t.Fatalf("second DoReusable: %v", err)
+	}
+	if got := string(secondResponse.Body); got != "two" {
+		t.Fatalf("second body = %q", got)
+	}
+
+	<-accepted
+	<-accepted
+}
+
 func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string, closed chan<- bool) {
 	t.Helper()
 
@@ -293,6 +380,61 @@ func serveTwoRequestsOnOneConnection(t *testing.T, listener net.Listener, reques
 		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
 		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
 	})
+}
+
+func serveTwoRequestsOnOneAcceptedConnection(t *testing.T, listener net.Listener, requests chan<- string, accepted chan<- struct{}) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	accepted <- struct{}{}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	serveResponsesOnReader(t, conn, reader, requests, []string{
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
+		"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+	})
+}
+
+func serveOneResponsePerAcceptedConnection(t *testing.T, listener net.Listener, accepted chan<- struct{}, responses []string) {
+	t.Helper()
+
+	for _, response := range responses {
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		accepted <- struct{}{}
+
+		if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			conn.Close()
+			t.Errorf("set deadline: %v", err)
+			return
+		}
+
+		reader := bufio.NewReader(conn)
+		if _, err := readHeaderBlock(reader); err != nil {
+			conn.Close()
+			t.Errorf("read request: %v", err)
+			return
+		}
+		if _, err := io.WriteString(conn, response); err != nil {
+			conn.Close()
+			t.Errorf("write response: %v", err)
+			return
+		}
+		conn.Close()
+	}
 }
 
 func serveResponsesOnOneConnection(t *testing.T, listener net.Listener, requests chan<- string, responses []string) {
