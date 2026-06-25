@@ -119,6 +119,85 @@ func TestRunFollowsOneRedirectForGETURL(t *testing.T) {
 	}
 }
 
+func TestRunFollowsRedirectChainUpToLimit(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 3)
+	go serveRedirectsThenOK(t, listener, requests, []string{"/second", "/third"})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/first"
+	err = run([]string{"-follow", "-max-redirects", "2", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	first := <-requests
+	if !strings.HasPrefix(first, "GET /first HTTP/1.1\r\n") {
+		t.Fatalf("first request line mismatch:\n%s", first)
+	}
+	second := <-requests
+	if !strings.HasPrefix(second, "GET /second HTTP/1.1\r\n") {
+		t.Fatalf("second request line mismatch:\n%s", second)
+	}
+	third := <-requests
+	if !strings.HasPrefix(third, "GET /third HTTP/1.1\r\n") {
+		t.Fatalf("third request line mismatch:\n%s", third)
+	}
+	if !strings.HasSuffix(stdout.String(), "hello") {
+		t.Fatalf("final response body mismatch:\n%s", stdout.String())
+	}
+}
+
+func TestRunStopsAtRedirectLimit(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go serveRedirects(t, listener, requests, []string{"/second", "/third"})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/first"
+	err = run([]string{"-follow", "-max-redirects", "1", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "stopped after 1 redirects") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	first := <-requests
+	if !strings.HasPrefix(first, "GET /first HTTP/1.1\r\n") {
+		t.Fatalf("first request line mismatch:\n%s", first)
+	}
+	second := <-requests
+	if !strings.HasPrefix(second, "GET /second HTTP/1.1\r\n") {
+		t.Fatalf("second request line mismatch:\n%s", second)
+	}
+}
+
+func TestRunRejectsNegativeRedirectLimit(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-follow", "-max-redirects", "-1", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "-max-redirects must be zero or greater") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunDoesNotFollowRedirectByDefault(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -470,6 +549,21 @@ func serveRedirectThenOK(t *testing.T, listener net.Listener, requests chan<- st
 
 	serveRedirectOnce(t, listener, requests, location)
 	serveOnce(t, listener, requests)
+}
+
+func serveRedirectsThenOK(t *testing.T, listener net.Listener, requests chan<- string, locations []string) {
+	t.Helper()
+
+	serveRedirects(t, listener, requests, locations)
+	serveOnce(t, listener, requests)
+}
+
+func serveRedirects(t *testing.T, listener net.Listener, requests chan<- string, locations []string) {
+	t.Helper()
+
+	for _, location := range locations {
+		serveRedirectOnce(t, listener, requests, location)
+	}
 }
 
 func readHTTPRequest(conn net.Conn) (string, error) {

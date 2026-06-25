@@ -14,11 +14,12 @@ URL:
   response status is one of those redirect statuses.
 - `ResolveRedirectURL` resolves a relative or absolute `Location` value against
   the request URL using Go's URL parser.
-- The CLI can follow one redirect for a simple `GET` URL request with
-  `-follow`.
+- The CLI can follow redirects for a simple `GET` URL request with `-follow`.
+- `-max-redirects` limits how many additional requests can be made while
+  following a redirect chain.
 - `300 Multiple Choices` and `304 Not Modified` are not treated as automatic
   redirects in this project.
 
 The current follow behavior opens a new one-shot connection for the redirected
-request because `Client.Do` still sends `Connection: close`. Redirect limits,
-method/body behavior, and reusable connections are later steps.
+request because `Client.Do` still sends `Connection: close`. Method/body
+behavior and reusable connections are later steps.

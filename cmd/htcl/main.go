@@ -29,7 +29,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
-	follow := flags.Bool("follow", false, "follow one redirect for a simple GET URL request")
+	follow := flags.Bool("follow", false, "follow redirects for a simple GET URL request")
+	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
@@ -41,12 +42,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err := validateOutputMode(*output); err != nil {
 		return err
 	}
+	if *maxRedirects < 0 {
+		return fmt.Errorf("-max-redirects must be zero or greater")
+	}
 
 	if *rawURL == "" && flags.NArg() > 0 {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -61,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -75,7 +79,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		return err
 	}
 	if follow {
-		response, err = followOneRedirect(u, response, method, headers, body, timeout, stderr)
+		response, err = followRedirects(u, response, method, headers, body, maxRedirects, timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -84,18 +88,28 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 	return writeResponse(stdout, response, output)
 }
 
-func followOneRedirect(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
-	location, ok := response.RedirectLocation()
-	if !ok {
-		return response, nil
-	}
+func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, maxRedirects int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+	current := base
+	for followed := 0; ; followed++ {
+		location, ok := response.RedirectLocation()
+		if !ok {
+			return response, nil
+		}
+		if followed >= maxRedirects {
+			return nil, fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
 
-	next, err := http1.ResolveRedirectURL(base, location)
-	if err != nil {
-		return nil, err
+		next, err := http1.ResolveRedirectURL(current, location)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
+		response, err = getURLOnce(next, method, headers, body, timeout, stderr)
+		if err != nil {
+			return nil, err
+		}
+		current = next
 	}
-	fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-	return getURLOnce(next, method, headers, body, timeout, stderr)
 }
 
 func getURLOnce(u *url.URL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {

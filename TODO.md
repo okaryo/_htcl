@@ -142,7 +142,7 @@ Questions to answer:
   - [x] Detect redirect responses from status code and `Location`.
   - [x] Resolve relative `Location` values against the request URL.
   - [x] Follow a redirect for a simple `GET` request.
-  - [ ] Add a redirect limit.
+  - [x] Add a redirect limit.
   - [ ] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
 - [ ] Implement cookies.
 - [ ] Implement gzip response decompression.
@@ -309,6 +309,8 @@ changes.
   later step.
 - Added redirect URL resolution. A `Location` value can now be resolved against
   the request URL before deciding whether to make the next request.
-- Added `-follow` for one redirect on simple `GET` URL requests. The redirected
-  request currently uses a new one-shot connection because the default client
+- Added `-follow` for redirect chains on simple `GET` URL requests. Redirected
+  requests currently use new one-shot connections because the default client
   path still sends `Connection: close`.
+- Added `-max-redirects` so redirect chains have an explicit upper bound and
+  redirect loops stop with an error instead of continuing indefinitely.
