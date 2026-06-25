@@ -126,7 +126,7 @@ Questions to answer:
 - [x] Define a minimal client API.
 - [x] Add a command for making requests from the terminal.
 - [x] Support method selection.
-- [ ] Support custom headers.
+- [x] Support custom headers.
 - [ ] Support request body input.
 - [ ] Print status, headers, and body in useful modes.
 
@@ -289,3 +289,6 @@ changes.
   `cmd/htcl` command-line interface.
 - Added `-method` so the CLI can serialize methods other than `GET` while still
   using the same request model and validation.
+- Added repeatable `-header` flags. The CLI now parses `Name: value` strings,
+  applies them over default `Host` and `User-Agent` headers, and leaves final
+  header validation to the request model.

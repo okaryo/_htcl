@@ -103,6 +103,54 @@ func TestRunAcceptsMethod(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsCustomHeaders(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/headers"
+	err = run([]string{
+		"-header", "X-Trace: abc123",
+		"-header", "User-Agent: custom-client/1.0",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.Contains(request, "X-Trace: abc123\r\n") {
+		t.Fatalf("missing custom header:\n%s", request)
+	}
+	if !strings.Contains(request, "User-Agent: custom-client/1.0\r\n") {
+		t.Fatalf("missing overridden User-Agent header:\n%s", request)
+	}
+	if strings.Contains(request, "User-Agent: htcl/0.1\r\n") {
+		t.Fatalf("default User-Agent was not overridden:\n%s", request)
+	}
+}
+
+func TestRunRejectsMalformedHeaderFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-header", "X-Trace", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "header must use Name: value form") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunRejectsHTTPSUntilTLSIsImplemented(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

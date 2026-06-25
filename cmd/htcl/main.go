@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/okaryo/_htcl/internal/http1"
@@ -27,6 +28,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
+	var headers headerFlags
+	flags.Var(&headers, "header", "HTTP request header in 'Name: value' form; can be repeated")
 
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -36,17 +39,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
 		*host = *address
 	}
 
-	request, err := http1.NewRequest(*method, *target, []http1.HeaderField{
-		{Name: "Host", Value: *host},
-		{Name: "User-Agent", Value: "htcl/0.1"},
-	}, nil)
+	request, err := http1.NewRequest(*method, *target, requestHeaderFields(*host, headers), nil)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -67,9 +67,15 @@ func getURL(rawURL, method string, timeout time.Duration, stdout, stderr io.Writ
 	if err != nil {
 		return err
 	}
-	request, err := http1.NewRequestForURL(method, u, []http1.HeaderField{
-		{Name: "User-Agent", Value: "htcl/0.1"},
-	}, nil)
+	host, err := http1.HostHeaderForURL(u)
+	if err != nil {
+		return err
+	}
+	target, err := http1.RequestTargetForURL(u)
+	if err != nil {
+		return err
+	}
+	request, err := http1.NewRequest(method, target, requestHeaderFields(host, headers), nil)
 	if err != nil {
 		return err
 	}
@@ -89,6 +95,52 @@ func getHTTP(address string, request *http1.Request, timeout time.Duration, stdo
 	}
 
 	return writeResponse(stdout, response)
+}
+
+type headerFlags []http1.HeaderField
+
+func (h *headerFlags) String() string {
+	if h == nil {
+		return ""
+	}
+	var values []string
+	for _, field := range *h {
+		values = append(values, field.Name+": "+field.Value)
+	}
+	return strings.Join(values, ", ")
+}
+
+func (h *headerFlags) Set(value string) error {
+	name, fieldValue, ok := strings.Cut(value, ":")
+	if !ok {
+		return fmt.Errorf("header must use Name: value form")
+	}
+	*h = append(*h, http1.HeaderField{
+		Name:  strings.TrimSpace(name),
+		Value: strings.TrimSpace(fieldValue),
+	})
+	return nil
+}
+
+func requestHeaderFields(host string, custom []http1.HeaderField) []http1.HeaderField {
+	fields := []http1.HeaderField{
+		{Name: "Host", Value: host},
+		{Name: "User-Agent", Value: "htcl/0.1"},
+	}
+	for _, field := range custom {
+		setHeaderField(&fields, field)
+	}
+	return fields
+}
+
+func setHeaderField(fields *[]http1.HeaderField, next http1.HeaderField) {
+	for i, field := range *fields {
+		if strings.EqualFold(field.Name, next.Name) {
+			(*fields)[i] = next
+			return
+		}
+	}
+	*fields = append(*fields, next)
 }
 
 func writeResponse(w io.Writer, response *http1.Response) error {
