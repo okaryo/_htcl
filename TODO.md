@@ -141,7 +141,7 @@ Questions to answer:
 - [ ] Implement redirects.
   - [x] Detect redirect responses from status code and `Location`.
   - [x] Resolve relative `Location` values against the request URL.
-  - [ ] Follow a redirect for a simple `GET` request.
+  - [x] Follow a redirect for a simple `GET` request.
   - [ ] Add a redirect limit.
   - [ ] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
 - [ ] Implement cookies.
@@ -309,3 +309,6 @@ changes.
   later step.
 - Added redirect URL resolution. A `Location` value can now be resolved against
   the request URL before deciding whether to make the next request.
+- Added `-follow` for one redirect on simple `GET` URL requests. The redirected
+  request currently uses a new one-shot connection because the default client
+  path still sends `Connection: close`.

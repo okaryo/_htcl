@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
+	follow := flags.Bool("follow", false, "follow one redirect for a simple GET URL request")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
@@ -44,7 +46,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -59,36 +61,78 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
 	}
+	if follow && (method != "GET" || len(body) > 0) {
+		return fmt.Errorf("-follow currently supports only GET requests without a body")
+	}
+
+	response, err := getURLOnce(u, method, headers, body, timeout, stderr)
+	if err != nil {
+		return err
+	}
+	if follow {
+		response, err = followOneRedirect(u, response, method, headers, body, timeout, stderr)
+		if err != nil {
+			return err
+		}
+	}
+
+	return writeResponse(stdout, response, output)
+}
+
+func followOneRedirect(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+	location, ok := response.RedirectLocation()
+	if !ok {
+		return response, nil
+	}
+
+	next, err := http1.ResolveRedirectURL(base, location)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
+	return getURLOnce(next, method, headers, body, timeout, stderr)
+}
+
+func getURLOnce(u *url.URL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	if u.Scheme == "https" {
-		return fmt.Errorf("https URLs require TLS support, which is not implemented yet")
+		return nil, fmt.Errorf("https URLs require TLS support, which is not implemented yet")
 	}
 
 	address, err := http1.TCPAddressForURL(u)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	host, err := http1.HostHeaderForURL(u)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	target, err := http1.RequestTargetForURL(u)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request, err := http1.NewRequest(method, target, requestHeaderFields(host, headers), body)
+	if err != nil {
+		return nil, err
+	}
+
+	return doHTTP(address, request, timeout, stderr)
+}
+
+func getHTTP(address string, request *http1.Request, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+	response, err := doHTTP(address, request, timeout, stderr)
 	if err != nil {
 		return err
 	}
 
-	return getHTTP(address, request, output, timeout, stdout, stderr)
+	return writeResponse(stdout, response, output)
 }
 
-func getHTTP(address string, request *http1.Request, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func doHTTP(address string, request *http1.Request, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	fmt.Fprintf(stderr, "dialing tcp %s\n", address)
 	fmt.Fprintln(stderr, "writing HTTP request")
 	fmt.Fprintln(stderr, "reading HTTP response")
@@ -96,10 +140,9 @@ func getHTTP(address string, request *http1.Request, output string, timeout time
 	client := http1.Client{Timeout: timeout}
 	response, err := client.Do(address, request)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	return writeResponse(stdout, response, output)
+	return response, nil
 }
 
 type headerFlags []http1.HeaderField
