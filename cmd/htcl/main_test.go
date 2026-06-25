@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +139,59 @@ func TestRunAcceptsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsBody(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/submit"
+	err = run([]string{
+		"-method", "POST",
+		"-body", "hello",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.HasPrefix(request, "POST /submit HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
+	}
+	if !strings.Contains(request, "Content-Length: 5\r\n") {
+		t.Fatalf("missing Content-Length header:\n%s", request)
+	}
+	if !strings.HasSuffix(request, "\r\n\r\nhello") {
+		t.Fatalf("request body mismatch:\n%s", request)
+	}
+}
+
+func TestRunRejectsMismatchedContentLength(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{
+		"-method", "POST",
+		"-body", "hello",
+		"-header", "Content-Length: 4",
+		"http://example.test/",
+	}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "Content-Length 4 does not match body length 5") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunRejectsMalformedHeaderFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -194,6 +248,7 @@ func serveOnce(t *testing.T, listener net.Listener, requests chan<- string) {
 
 	reader := bufio.NewReader(conn)
 	var request strings.Builder
+	var contentLength int
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -201,9 +256,24 @@ func serveOnce(t *testing.T, listener net.Listener, requests chan<- string) {
 			return
 		}
 		request.WriteString(line)
+		if name, value, ok := strings.Cut(strings.TrimRight(line, "\r\n"), ":"); ok && strings.EqualFold(name, "Content-Length") {
+			contentLength, err = strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				t.Errorf("parse Content-Length: %v", err)
+				return
+			}
+		}
 		if line == "\r\n" {
 			break
 		}
+	}
+	if contentLength > 0 {
+		body := make([]byte, contentLength)
+		if _, err := io.ReadFull(reader, body); err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		request.Write(body)
 	}
 	requests <- request.String()
 

@@ -87,6 +87,12 @@ Run the command against a local HTTP server:
 go run ./cmd/htcl -method GET -header 'Accept: text/plain' http://127.0.0.1:8080/hello
 ```
 
+Send a small request body:
+
+```sh
+go run ./cmd/htcl -method POST -body 'hello' http://127.0.0.1:8080/submit
+```
+
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
 response status line, headers, and fixed-length body, then prints the parsed
 response.

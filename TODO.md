@@ -127,7 +127,7 @@ Questions to answer:
 - [x] Add a command for making requests from the terminal.
 - [x] Support method selection.
 - [x] Support custom headers.
-- [ ] Support request body input.
+- [x] Support request body input.
 - [ ] Print status, headers, and body in useful modes.
 
 Questions to answer:
@@ -292,3 +292,6 @@ changes.
 - Added repeatable `-header` flags. The CLI now parses `Name: value` strings,
   applies them over default `Host` and `User-Agent` headers, and leaves final
   header validation to the request model.
+- Added `-body` for literal request body input. Non-empty bodies are written
+  after the header section, and `Content-Length` is still managed by the request
+  model so mismatched caller-provided lengths fail before dialing.

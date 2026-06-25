@@ -27,6 +27,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	target := flags.String("target", "/", "HTTP request target")
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
+	body := flags.String("body", "", "HTTP request body as a literal string")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
 	flags.Var(&headers, "header", "HTTP request header in 'Name: value' form; can be repeated")
@@ -39,14 +40,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
 		*host = *address
 	}
 
-	request, err := http1.NewRequest(*method, *target, requestHeaderFields(*host, headers), nil)
+	request, err := http1.NewRequest(*method, *target, requestHeaderFields(*host, headers), []byte(*body))
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -75,7 +76,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, timeout time.Dur
 	if err != nil {
 		return err
 	}
-	request, err := http1.NewRequest(method, target, requestHeaderFields(host, headers), nil)
+	request, err := http1.NewRequest(method, target, requestHeaderFields(host, headers), body)
 	if err != nil {
 		return err
 	}

@@ -36,6 +36,7 @@ Supported CLI options currently include:
 
 - `-method`: HTTP method. Defaults to `GET`.
 - `-header`: HTTP request header in `Name: value` form. Can be repeated.
+- `-body`: HTTP request body as a literal string.
 - `-url`: URL to request. A positional URL is also accepted.
 - `-addr`: TCP address for lower-level observation.
 - `-host`: HTTP `Host` header for lower-level observation.
@@ -46,4 +47,8 @@ The CLI starts with default `Host` and `User-Agent` headers, then applies
 `-header` values. Repeated names replace earlier values, so custom `Host` or
 `User-Agent` values are visible in the serialized request.
 
-Request bodies and output modes are later steps.
+When `-body` is non-empty, the request model writes the bytes after the blank
+line and automatically adds `Content-Length` unless the caller provided a
+matching value.
+
+Output modes are a later step.
