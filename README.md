@@ -127,3 +127,5 @@ later learning steps.
   decisions.
 - `docs/client-api-cli.md`: notes on the current client API and command-line
   shape.
+- `docs/redirects.md`: notes on redirect response detection and future follow
+  behavior.
