@@ -93,6 +93,12 @@ Send a small request body:
 go run ./cmd/htcl -method POST -body 'hello' http://127.0.0.1:8080/submit
 ```
 
+Print only the response body:
+
+```sh
+go run ./cmd/htcl -output body http://127.0.0.1:8080/hello
+```
+
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
 response status line, headers, and fixed-length body, then prints the parsed
 response.

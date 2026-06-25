@@ -174,6 +174,101 @@ func TestRunAcceptsBody(t *testing.T) {
 	}
 }
 
+func TestRunOutputBodyOnly(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/hello"
+	err = run([]string{"-output", "body", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	<-requests
+
+	if got := stdout.String(); got != "hello" {
+		t.Fatalf("body output mismatch: %q", got)
+	}
+}
+
+func TestRunOutputHeadersOnly(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/hello"
+	err = run([]string{"-output", "headers", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	<-requests
+
+	got := stdout.String()
+	if !strings.Contains(got, "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("headers output missing status line:\n%s", got)
+	}
+	if !strings.Contains(got, "Content-Length: 5\r\n") {
+		t.Fatalf("headers output missing header:\n%s", got)
+	}
+	if strings.Contains(got, "hello") {
+		t.Fatalf("headers output included body:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "\r\n\r\n") {
+		t.Fatalf("headers output missing final blank line:\n%s", got)
+	}
+}
+
+func TestRunOutputStatusOnly(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/hello"
+	err = run([]string{"-output", "status", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	<-requests
+
+	if got := stdout.String(); got != "HTTP/1.1 200 OK\r\n" {
+		t.Fatalf("status output mismatch: %q", got)
+	}
+}
+
+func TestRunRejectsUnsupportedOutputMode(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-output", "json", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), `unsupported output mode "json"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunRejectsMismatchedContentLength(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -28,6 +28,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
+	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
 	flags.Var(&headers, "header", "HTTP request header in 'Name: value' form; can be repeated")
@@ -35,12 +36,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if err := validateOutputMode(*output); err != nil {
+		return err
+	}
 
 	if *rawURL == "" && flags.NArg() > 0 {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -52,10 +56,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	return getHTTP(*address, request, *timeout, stdout, stderr)
+	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -81,10 +85,10 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, tim
 		return err
 	}
 
-	return getHTTP(address, request, timeout, stdout, stderr)
+	return getHTTP(address, request, output, timeout, stdout, stderr)
 }
 
-func getHTTP(address string, request *http1.Request, timeout time.Duration, stdout, stderr io.Writer) error {
+func getHTTP(address string, request *http1.Request, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stderr, "dialing tcp %s\n", address)
 	fmt.Fprintln(stderr, "writing HTTP request")
 	fmt.Fprintln(stderr, "reading HTTP response")
@@ -95,7 +99,7 @@ func getHTTP(address string, request *http1.Request, timeout time.Duration, stdo
 		return err
 	}
 
-	return writeResponse(stdout, response)
+	return writeResponse(stdout, response, output)
 }
 
 type headerFlags []http1.HeaderField
@@ -144,20 +148,62 @@ func setHeaderField(fields *[]http1.HeaderField, next http1.HeaderField) {
 	*fields = append(*fields, next)
 }
 
-func writeResponse(w io.Writer, response *http1.Response) error {
+func validateOutputMode(output string) error {
+	switch output {
+	case "response", "body", "headers", "status":
+		return nil
+	default:
+		return fmt.Errorf("unsupported output mode %q", output)
+	}
+}
+
+func writeResponse(w io.Writer, response *http1.Response, output string) error {
+	switch output {
+	case "response":
+		if err := writeStatusLine(w, response); err != nil {
+			return err
+		}
+		if err := writeHeaderFields(w, response.HeaderFields); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprint(w, "\r\n"); err != nil {
+			return err
+		}
+		if _, err := w.Write(response.Body); err != nil {
+			return err
+		}
+		return nil
+	case "body":
+		_, err := w.Write(response.Body)
+		return err
+	case "headers":
+		if err := writeStatusLine(w, response); err != nil {
+			return err
+		}
+		if err := writeHeaderFields(w, response.HeaderFields); err != nil {
+			return err
+		}
+		_, err := fmt.Fprint(w, "\r\n")
+		return err
+	case "status":
+		return writeStatusLine(w, response)
+	default:
+		return fmt.Errorf("unsupported output mode %q", output)
+	}
+}
+
+func writeStatusLine(w io.Writer, response *http1.Response) error {
 	if _, err := fmt.Fprintf(w, "%s %03d %s\r\n", response.Version, response.StatusCode, response.ReasonPhrase); err != nil {
 		return err
 	}
-	for _, field := range response.HeaderFields {
+	return nil
+}
+
+func writeHeaderFields(w io.Writer, fields []http1.HeaderField) error {
+	for _, field := range fields {
 		if _, err := fmt.Fprintf(w, "%s: %s\r\n", field.Name, field.Value); err != nil {
 			return err
 		}
-	}
-	if _, err := fmt.Fprint(w, "\r\n"); err != nil {
-		return err
-	}
-	if _, err := w.Write(response.Body); err != nil {
-		return err
 	}
 	return nil
 }

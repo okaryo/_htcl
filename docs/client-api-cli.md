@@ -42,6 +42,8 @@ Supported CLI options currently include:
 - `-host`: HTTP `Host` header for lower-level observation.
 - `-target`: HTTP request target for lower-level observation.
 - `-timeout`: dial, write, and read timeout.
+- `-output`: response output mode. Supported values are `response`, `body`,
+  `headers`, and `status`.
 
 The CLI starts with default `Host` and `User-Agent` headers, then applies
 `-header` values. Repeated names replace earlier values, so custom `Host` or
@@ -51,4 +53,5 @@ When `-body` is non-empty, the request model writes the bytes after the blank
 line and automatically adds `Content-Length` unless the caller provided a
 matching value.
 
-Output modes are a later step.
+Output modes are handled only by the CLI. The client package still returns a
+parsed `Response`; the command chooses which parts to print.

@@ -128,7 +128,7 @@ Questions to answer:
 - [x] Support method selection.
 - [x] Support custom headers.
 - [x] Support request body input.
-- [ ] Print status, headers, and body in useful modes.
+- [x] Print status, headers, and body in useful modes.
 
 Questions to answer:
 
@@ -295,3 +295,6 @@ changes.
 - Added `-body` for literal request body input. Non-empty bodies are written
   after the header section, and `Content-Length` is still managed by the request
   model so mismatched caller-provided lengths fail before dialing.
+- Added `-output` modes for `response`, `body`, `headers`, and `status`.
+  Formatting remains a CLI concern; the client API continues to return the
+  parsed response model.
