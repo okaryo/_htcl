@@ -1,6 +1,9 @@
 package http1
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsRedirectStatus(t *testing.T) {
 	tests := []struct {
@@ -77,5 +80,56 @@ func TestRedirectLocationRequiresLocationHeader(t *testing.T) {
 
 	if got, ok := response.RedirectLocation(); ok {
 		t.Fatalf("RedirectLocation = %q, want none", got)
+	}
+}
+
+func TestResolveRedirectURL(t *testing.T) {
+	base, err := ParseURL("http://example.test/docs/page?old=1")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	tests := map[string]string{
+		"next":                         "http://example.test/docs/next",
+		"/login":                       "http://example.test/login",
+		"?page=2":                      "http://example.test/docs/page?page=2",
+		"https://other.test/new-place": "https://other.test/new-place",
+	}
+
+	for location, want := range tests {
+		t.Run(location, func(t *testing.T) {
+			got, err := ResolveRedirectURL(base, location)
+			if err != nil {
+				t.Fatalf("ResolveRedirectURL: %v", err)
+			}
+			if got.String() != want {
+				t.Fatalf("ResolveRedirectURL = %q, want %q", got.String(), want)
+			}
+		})
+	}
+}
+
+func TestResolveRedirectURLRejectsEmptyLocation(t *testing.T) {
+	base, err := ParseURL("http://example.test/")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	_, err = ResolveRedirectURL(base, "")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "redirect Location is empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveRedirectURLRejectsNilBaseURL(t *testing.T) {
+	_, err := ResolveRedirectURL(nil, "/next")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "base URL is nil") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

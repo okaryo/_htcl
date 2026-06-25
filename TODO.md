@@ -140,7 +140,7 @@ Questions to answer:
 
 - [ ] Implement redirects.
   - [x] Detect redirect responses from status code and `Location`.
-  - [ ] Resolve relative `Location` values against the request URL.
+  - [x] Resolve relative `Location` values against the request URL.
   - [ ] Follow a redirect for a simple `GET` request.
   - [ ] Add a redirect limit.
   - [ ] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
@@ -307,3 +307,5 @@ changes.
   Redirects are currently identified from `301`, `302`, `303`, `307`, or `308`
   plus a non-empty `Location` header; automatic follow behavior is still a
   later step.
+- Added redirect URL resolution. A `Location` value can now be resolved against
+  the request URL before deciding whether to make the next request.
