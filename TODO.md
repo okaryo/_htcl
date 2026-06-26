@@ -145,6 +145,11 @@ Questions to answer:
   - [x] Add a redirect limit.
   - [x] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
 - [ ] Implement cookies.
+  - [x] Parse `Set-Cookie` response headers into cookie name/value pairs.
+  - [x] Format cookies as a request `Cookie` header value.
+  - [ ] Store cookies between requests in a minimal jar.
+  - [ ] Apply domain and path matching.
+  - [ ] Handle expiration and deletion.
 - [ ] Implement gzip response decompression.
 - [ ] Implement chunked transfer response decoding.
 - [ ] Implement simple authentication header helpers.
@@ -317,3 +322,6 @@ changes.
 - Added redirect method/body behavior. `301`, `302`, and `303` switch non-GET
   and non-HEAD requests to `GET` without a body, while `307` and `308` preserve
   the original method and body.
+- Started cookie support by parsing `Set-Cookie` header values into simple
+  name/value cookies and formatting those cookies for a request `Cookie` header.
+  Storage, matching, and expiration are still later steps.

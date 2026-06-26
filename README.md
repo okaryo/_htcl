@@ -135,3 +135,5 @@ later learning steps.
   shape.
 - `docs/redirects.md`: notes on redirect response detection and future follow
   behavior.
+- `docs/cookies.md`: notes on cookie parsing, formatting, and future cookie jar
+  behavior.
