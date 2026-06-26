@@ -138,12 +138,12 @@ Questions to answer:
 
 ### 7. Practical HTTP Client Features
 
-- [ ] Implement redirects.
+- [x] Implement redirects.
   - [x] Detect redirect responses from status code and `Location`.
   - [x] Resolve relative `Location` values against the request URL.
-  - [x] Follow a redirect for a simple `GET` request.
+  - [x] Follow redirects.
   - [x] Add a redirect limit.
-  - [ ] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
+  - [x] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
 - [ ] Implement cookies.
 - [ ] Implement gzip response decompression.
 - [ ] Implement chunked transfer response decoding.
@@ -309,8 +309,11 @@ changes.
   later step.
 - Added redirect URL resolution. A `Location` value can now be resolved against
   the request URL before deciding whether to make the next request.
-- Added `-follow` for redirect chains on simple `GET` URL requests. Redirected
-  requests currently use new one-shot connections because the default client
-  path still sends `Connection: close`.
+- Added `-follow` for redirect chains. Redirected requests currently use new
+  one-shot connections because the default client path still sends
+  `Connection: close`.
 - Added `-max-redirects` so redirect chains have an explicit upper bound and
   redirect loops stop with an error instead of continuing indefinitely.
+- Added redirect method/body behavior. `301`, `302`, and `303` switch non-GET
+  and non-HEAD requests to `GET` without a body, while `307` and `308` preserve
+  the original method and body.

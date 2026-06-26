@@ -57,3 +57,17 @@ func ResolveRedirectURL(base *url.URL, location string) (*url.URL, error) {
 	}
 	return base.ResolveReference(next), nil
 }
+
+func RedirectRequestBehavior(statusCode int, method string) (nextMethod string, keepBody bool, ok bool) {
+	switch statusCode {
+	case 301, 302, 303:
+		if method == "GET" || method == "HEAD" {
+			return method, false, true
+		}
+		return "GET", false, true
+	case 307, 308:
+		return method, true, true
+	default:
+		return "", false, false
+	}
+}

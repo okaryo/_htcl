@@ -99,7 +99,7 @@ Print only the response body:
 go run ./cmd/htcl -output body http://127.0.0.1:8080/hello
 ```
 
-Follow redirects for a simple `GET` URL request:
+Follow redirects:
 
 ```sh
 go run ./cmd/htcl -follow -max-redirects 10 http://127.0.0.1:8080/old

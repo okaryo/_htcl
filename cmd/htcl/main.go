@@ -29,7 +29,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
-	follow := flags.Bool("follow", false, "follow redirects for a simple GET URL request")
+	follow := flags.Bool("follow", false, "follow redirects")
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
@@ -70,9 +70,6 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 	if err != nil {
 		return err
 	}
-	if follow && (method != "GET" || len(body) > 0) {
-		return fmt.Errorf("-follow currently supports only GET requests without a body")
-	}
 
 	response, err := getURLOnce(u, method, headers, body, timeout, stderr)
 	if err != nil {
@@ -90,6 +87,9 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 
 func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, maxRedirects int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	current := base
+	currentMethod := method
+	currentHeaders := append([]http1.HeaderField(nil), headers...)
+	currentBody := append([]byte(nil), body...)
 	for followed := 0; ; followed++ {
 		location, ok := response.RedirectLocation()
 		if !ok {
@@ -103,12 +103,26 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		if err != nil {
 			return nil, err
 		}
+		nextMethod, keepBody, ok := http1.RedirectRequestBehavior(response.StatusCode, currentMethod)
+		if !ok {
+			return response, nil
+		}
+		nextBody := currentBody
+		nextHeaders := currentHeaders
+		if !keepBody {
+			nextBody = nil
+			nextHeaders = withoutHeaderField(currentHeaders, "Content-Length")
+		}
+
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnce(next, method, headers, body, timeout, stderr)
+		response, err = getURLOnce(next, nextMethod, nextHeaders, nextBody, timeout, stderr)
 		if err != nil {
 			return nil, err
 		}
 		current = next
+		currentMethod = nextMethod
+		currentHeaders = nextHeaders
+		currentBody = nextBody
 	}
 }
 
@@ -203,6 +217,17 @@ func setHeaderField(fields *[]http1.HeaderField, next http1.HeaderField) {
 		}
 	}
 	*fields = append(*fields, next)
+}
+
+func withoutHeaderField(fields []http1.HeaderField, name string) []http1.HeaderField {
+	var filtered []http1.HeaderField
+	for _, field := range fields {
+		if strings.EqualFold(field.Name, name) {
+			continue
+		}
+		filtered = append(filtered, field)
+	}
+	return filtered
 }
 
 func validateOutputMode(output string) error {

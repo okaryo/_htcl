@@ -229,19 +229,6 @@ func TestRunDoesNotFollowRedirectByDefault(t *testing.T) {
 	}
 }
 
-func TestRunRejectsFollowForNonSimpleGET(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	err := run([]string{"-follow", "-method", "POST", "http://example.test/"}, &stdout, &stderr)
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if !strings.Contains(err.Error(), "-follow currently supports only GET requests without a body") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestRunAcceptsMethod(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -263,6 +250,89 @@ func TestRunAcceptsMethod(t *testing.T) {
 	request := <-requests
 	if !strings.HasPrefix(request, "HEAD /status HTTP/1.1\r\n") {
 		t.Fatalf("request line mismatch:\n%s", request)
+	}
+}
+
+func TestRunChangesPostToGetFor303Redirect(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go serveRedirectThenOKWithStatus(t, listener, requests, 303, "/done")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/submit"
+	err = run([]string{
+		"-follow",
+		"-method", "POST",
+		"-body", "hello",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	first := <-requests
+	if !strings.HasPrefix(first, "POST /submit HTTP/1.1\r\n") {
+		t.Fatalf("first request line mismatch:\n%s", first)
+	}
+	if !strings.HasSuffix(first, "\r\n\r\nhello") {
+		t.Fatalf("first request body mismatch:\n%s", first)
+	}
+	second := <-requests
+	if !strings.HasPrefix(second, "GET /done HTTP/1.1\r\n") {
+		t.Fatalf("second request line mismatch:\n%s", second)
+	}
+	if strings.Contains(second, "Content-Length: 5\r\n") {
+		t.Fatalf("second request kept original Content-Length:\n%s", second)
+	}
+	if strings.HasSuffix(second, "\r\n\r\nhello") {
+		t.Fatalf("second request kept original body:\n%s", second)
+	}
+}
+
+func TestRunPreservesPostBodyFor307Redirect(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go serveRedirectThenOKWithStatus(t, listener, requests, 307, "/done")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/submit"
+	err = run([]string{
+		"-follow",
+		"-method", "POST",
+		"-body", "hello",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	first := <-requests
+	if !strings.HasPrefix(first, "POST /submit HTTP/1.1\r\n") {
+		t.Fatalf("first request line mismatch:\n%s", first)
+	}
+	second := <-requests
+	if !strings.HasPrefix(second, "POST /done HTTP/1.1\r\n") {
+		t.Fatalf("second request line mismatch:\n%s", second)
+	}
+	if !strings.Contains(second, "Content-Length: 5\r\n") {
+		t.Fatalf("second request missing Content-Length:\n%s", second)
+	}
+	if !strings.HasSuffix(second, "\r\n\r\nhello") {
+		t.Fatalf("second request body mismatch:\n%s", second)
 	}
 }
 
@@ -519,6 +589,12 @@ func serveOnce(t *testing.T, listener net.Listener, requests chan<- string) {
 func serveRedirectOnce(t *testing.T, listener net.Listener, requests chan<- string, location string) {
 	t.Helper()
 
+	serveRedirectOnceWithStatus(t, listener, requests, 302, location)
+}
+
+func serveRedirectOnceWithStatus(t *testing.T, listener net.Listener, requests chan<- string, statusCode int, location string) {
+	t.Helper()
+
 	conn, err := listener.Accept()
 	if err != nil {
 		t.Errorf("accept: %v", err)
@@ -538,7 +614,7 @@ func serveRedirectOnce(t *testing.T, listener net.Listener, requests chan<- stri
 	}
 	requests <- request
 
-	response := "HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+	response := fmt.Sprintf("HTTP/1.1 %03d %s\r\nLocation: %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", statusCode, redirectReason(statusCode), location)
 	if _, err := io.WriteString(conn, response); err != nil {
 		t.Errorf("write response: %v", err)
 	}
@@ -548,6 +624,13 @@ func serveRedirectThenOK(t *testing.T, listener net.Listener, requests chan<- st
 	t.Helper()
 
 	serveRedirectOnce(t, listener, requests, location)
+	serveOnce(t, listener, requests)
+}
+
+func serveRedirectThenOKWithStatus(t *testing.T, listener net.Listener, requests chan<- string, statusCode int, location string) {
+	t.Helper()
+
+	serveRedirectOnceWithStatus(t, listener, requests, statusCode, location)
 	serveOnce(t, listener, requests)
 }
 
@@ -563,6 +646,23 @@ func serveRedirects(t *testing.T, listener net.Listener, requests chan<- string,
 
 	for _, location := range locations {
 		serveRedirectOnce(t, listener, requests, location)
+	}
+}
+
+func redirectReason(statusCode int) string {
+	switch statusCode {
+	case 301:
+		return "Moved Permanently"
+	case 302:
+		return "Found"
+	case 303:
+		return "See Other"
+	case 307:
+		return "Temporary Redirect"
+	case 308:
+		return "Permanent Redirect"
+	default:
+		return "Redirect"
 	}
 }
 
