@@ -43,6 +43,7 @@ Supported CLI options currently include:
 - `-if-modified-since`: send `If-Modified-Since` from an RFC3339 timestamp.
 - `-follow`: follow redirects.
 - `-max-redirects`: maximum number of redirects to follow. Defaults to `10`.
+- `-proxy`: HTTP proxy URL for URL-based requests.
 - `-url`: URL to request. A positional URL is also accepted.
 - `-addr`: TCP address for lower-level observation.
 - `-host`: HTTP `Host` header for lower-level observation.
@@ -58,6 +59,11 @@ The CLI starts with default `Host` and `User-Agent` headers, then applies
 When `-body` is non-empty, the request model writes the bytes after the blank
 line and automatically adds `Content-Length` unless the caller provided a
 matching value.
+
+When `-proxy` is set, the CLI connects to the proxy address but keeps the
+origin `Host` header. The request target is serialized in absolute-form, for
+example `GET http://example.test/path HTTP/1.1`. HTTPS proxy tunneling with
+`CONNECT` is not implemented yet.
 
 Output modes are handled only by the CLI. The client package still returns a
 parsed `Response`; the command chooses which parts to print.

@@ -102,8 +102,11 @@ func (r *Request) prepare() error {
 	if strings.ContainsAny(r.Method, " \t\r\n") {
 		return fmt.Errorf("method contains whitespace")
 	}
-	if r.Target == "" || !strings.HasPrefix(r.Target, "/") {
-		return fmt.Errorf("target must start with /")
+	if r.Target == "" {
+		return fmt.Errorf("target is required")
+	}
+	if !isSupportedRequestTarget(r.Target) {
+		return fmt.Errorf("target must start with / or be an absolute URL")
 	}
 	if strings.ContainsAny(r.Target, "\r\n") {
 		return fmt.Errorf("target contains line break")
@@ -133,6 +136,12 @@ func (r *Request) prepare() error {
 	}
 
 	return nil
+}
+
+func isSupportedRequestTarget(target string) bool {
+	return strings.HasPrefix(target, "/") ||
+		strings.HasPrefix(target, "http://") ||
+		strings.HasPrefix(target, "https://")
 }
 
 func (r *Request) prepareContentLength() error {

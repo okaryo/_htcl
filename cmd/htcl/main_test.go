@@ -81,6 +81,52 @@ func TestRunAcceptsURL(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsHTTPProxy(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = run([]string{
+		"-proxy", "http://" + listener.Addr().String(),
+		"-timeout", "2s",
+		"http://example.test:8080/search?q=hello",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.HasPrefix(request, "GET http://example.test:8080/search?q=hello HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
+	}
+	if !strings.Contains(request, "Host: example.test:8080\r\n") {
+		t.Fatalf("missing origin Host header:\n%s", request)
+	}
+	if !strings.Contains(stderr.String(), "dialing tcp "+listener.Addr().String()) {
+		t.Fatalf("client did not dial proxy address:\n%s", stderr.String())
+	}
+}
+
+func TestRunRejectsHTTPSProxyUntilConnectIsImplemented(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-proxy", "https://proxy.test", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "HTTP proxy URLs must use http scheme") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunFollowsOneRedirectForGETURL(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -671,7 +717,7 @@ func TestRunRejectsTargetWithoutLeadingSlash(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !strings.Contains(err.Error(), "target must start with /") {
+	if !strings.Contains(err.Error(), "target must start with / or be an absolute URL") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

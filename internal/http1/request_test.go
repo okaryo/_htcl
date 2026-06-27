@@ -60,6 +60,23 @@ func TestNewRequestForURLSetsHostAndTarget(t *testing.T) {
 	}
 }
 
+func TestWriteRequestAcceptsAbsoluteFormTarget(t *testing.T) {
+	request, err := NewRequest("GET", "http://example.test/search?q=hello", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := WriteRequest(&out, request); err != nil {
+		t.Fatalf("WriteRequest: %v", err)
+	}
+	if !strings.HasPrefix(out.String(), "GET http://example.test/search?q=hello HTTP/1.1\r\n") {
+		t.Fatalf("request target mismatch:\n%s", out.String())
+	}
+}
+
 func TestNewRequestRejectsMissingHostForHTTP11(t *testing.T) {
 	_, err := NewRequest("GET", "/", nil, nil)
 	if err == nil {
@@ -77,7 +94,7 @@ func TestNewRequestRejectsInvalidTarget(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !strings.Contains(err.Error(), "target must start with /") {
+	if !strings.Contains(err.Error(), "target must start with / or be an absolute URL") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

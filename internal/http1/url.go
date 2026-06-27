@@ -85,3 +85,21 @@ func RequestTargetForURL(u *url.URL) (string, error) {
 	}
 	return target, nil
 }
+
+func AbsoluteRequestTargetForURL(u *url.URL) (string, error) {
+	if u == nil {
+		return "", fmt.Errorf("URL is nil")
+	}
+	if u.Scheme == "" {
+		return "", fmt.Errorf("URL scheme is required")
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("URL host is required")
+	}
+
+	target, err := RequestTargetForURL(u)
+	if err != nil {
+		return "", err
+	}
+	return u.Scheme + "://" + u.Host + target, nil
+}

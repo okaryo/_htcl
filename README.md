@@ -105,6 +105,12 @@ Follow redirects:
 go run ./cmd/htcl -follow -max-redirects 10 http://127.0.0.1:8080/old
 ```
 
+Send a request through a plain HTTP proxy:
+
+```sh
+go run ./cmd/htcl -proxy http://127.0.0.1:8080 http://example.test/hello
+```
+
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
 response status line, headers, and fixed-length body, then prints the parsed
 response.
@@ -141,3 +147,4 @@ later learning steps.
 - `docs/chunked-transfer.md`: notes on chunked transfer response decoding.
 - `docs/authentication.md`: notes on Basic authentication headers.
 - `docs/cache.md`: notes on cache-related request headers.
+- `docs/proxy.md`: notes on plain HTTP proxy requests.

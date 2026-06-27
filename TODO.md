@@ -154,7 +154,7 @@ Questions to answer:
 - [x] Implement chunked transfer response decoding.
 - [x] Implement simple authentication header helpers.
 - [x] Explore cache-related request headers.
-- [ ] Explore proxy support.
+- [x] Explore proxy support.
 - [ ] Explore retry behavior and idempotency.
 
 Questions to answer:
@@ -162,6 +162,7 @@ Questions to answer:
 - Which redirects preserve the original method?
 - How does cookie state move between responses and later requests?
 - What does chunked transfer solve for responses without known length?
+- How does an HTTP proxy change the request target and TCP connection target?
 - When are retries unsafe?
 
 ### 8. HTTPS And TLS
@@ -348,3 +349,6 @@ changes.
 - Added cache-related request header helpers and CLI flags for `no-cache`,
   `If-None-Match`, and `If-Modified-Since`. This explores revalidation headers
   without implementing response storage.
+- Added plain HTTP proxy support for URL-based requests. The CLI now connects
+  to the proxy address while serializing the origin URL as an absolute-form
+  request target; HTTPS `CONNECT` tunneling remains a later TLS-related step.

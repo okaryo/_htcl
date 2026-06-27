@@ -48,6 +48,14 @@ func TestURLHelpersDeriveAddressHostAndTarget(t *testing.T) {
 	if target != "/search?q=hello%20world" {
 		t.Fatalf("target = %q", target)
 	}
+
+	absoluteTarget, err := AbsoluteRequestTargetForURL(u)
+	if err != nil {
+		t.Fatalf("AbsoluteRequestTargetForURL: %v", err)
+	}
+	if absoluteTarget != "http://example.test:8080/search?q=hello%20world" {
+		t.Fatalf("absolute target = %q", absoluteTarget)
+	}
 }
 
 func TestURLHelpersApplyDefaultPorts(t *testing.T) {
@@ -85,6 +93,14 @@ func TestURLHelpersHandleMissingPathAsSlash(t *testing.T) {
 	}
 	if target != "/" {
 		t.Fatalf("target = %q", target)
+	}
+
+	absoluteTarget, err := AbsoluteRequestTargetForURL(u)
+	if err != nil {
+		t.Fatalf("AbsoluteRequestTargetForURL: %v", err)
+	}
+	if absoluteTarget != "http://example.test/" {
+		t.Fatalf("absolute target = %q", absoluteTarget)
 	}
 }
 

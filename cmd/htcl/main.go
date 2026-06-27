@@ -35,6 +35,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	ifModifiedSince := flags.String("if-modified-since", "", "send If-Modified-Since from an RFC3339 timestamp")
 	follow := flags.Bool("follow", false, "follow redirects")
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
+	proxyRawURL := flags.String("proxy", "", "HTTP proxy URL")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
@@ -64,7 +65,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -79,13 +80,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
 	}
+	proxy, err := parseProxyURL(proxyRawURL)
+	if err != nil {
+		return err
+	}
 
-	response, err := getURLOnce(u, method, headers, body, timeout, stderr)
+	response, err := getURLOnce(u, proxy, method, headers, body, timeout, stderr)
 	if err != nil {
 		return err
 	}
@@ -94,7 +99,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		if err := jar.StoreFromResponseURL(response, u); err != nil {
 			return err
 		}
-		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, timeout, stderr)
+		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, proxy, timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -103,7 +108,21 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 	return writeResponse(stdout, response, output)
 }
 
-func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func parseProxyURL(rawURL string) (*url.URL, error) {
+	if rawURL == "" {
+		return nil, nil
+	}
+	proxy, err := http1.ParseURL(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse proxy URL: %w", err)
+	}
+	if proxy.Scheme != "http" {
+		return nil, fmt.Errorf("HTTP proxy URLs must use http scheme")
+	}
+	return proxy, nil
+}
+
+func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, proxy *url.URL, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	current := base
 	currentMethod := method
 	currentHeaders := append([]http1.HeaderField(nil), headers...)
@@ -133,7 +152,7 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		}
 
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnce(next, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, timeout, stderr)
+		response, err = getURLOnce(next, proxy, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, timeout, stderr)
 		if err != nil {
 			return nil, err
 		}
@@ -147,12 +166,16 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 	}
 }
 
-func getURLOnce(u *url.URL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func getURLOnce(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	if u.Scheme == "https" {
 		return nil, fmt.Errorf("https URLs require TLS support, which is not implemented yet")
 	}
 
-	address, err := http1.TCPAddressForURL(u)
+	addressURL := u
+	if proxy != nil {
+		addressURL = proxy
+	}
+	address, err := http1.TCPAddressForURL(addressURL)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +183,7 @@ func getURLOnce(u *url.URL, method string, headers []http1.HeaderField, body []b
 	if err != nil {
 		return nil, err
 	}
-	target, err := http1.RequestTargetForURL(u)
+	target, err := requestTargetForURL(u, proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +193,13 @@ func getURLOnce(u *url.URL, method string, headers []http1.HeaderField, body []b
 	}
 
 	return doHTTP(address, request, timeout, stderr)
+}
+
+func requestTargetForURL(u *url.URL, proxy *url.URL) (string, error) {
+	if proxy == nil {
+		return http1.RequestTargetForURL(u)
+	}
+	return http1.AbsoluteRequestTargetForURL(u)
 }
 
 func getHTTP(address string, request *http1.Request, output string, timeout time.Duration, stdout, stderr io.Writer) error {
