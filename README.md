@@ -140,3 +140,4 @@ later learning steps.
 - `docs/compression.md`: notes on gzip response body decompression.
 - `docs/chunked-transfer.md`: notes on chunked transfer response decoding.
 - `docs/authentication.md`: notes on Basic authentication headers.
+- `docs/cache.md`: notes on cache-related request headers.

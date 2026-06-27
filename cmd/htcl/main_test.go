@@ -440,6 +440,55 @@ func TestRunRejectsMalformedBasicAuth(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsCacheHeaders(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/cached"
+	err = run([]string{
+		"-no-cache",
+		"-if-none-match", `"abc123"`,
+		"-if-modified-since", "2030-01-02T03:04:05+09:00",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.Contains(request, "Cache-Control: no-cache\r\n") {
+		t.Fatalf("missing Cache-Control header:\n%s", request)
+	}
+	if !strings.Contains(request, "If-None-Match: \"abc123\"\r\n") {
+		t.Fatalf("missing If-None-Match header:\n%s", request)
+	}
+	if !strings.Contains(request, "If-Modified-Since: Tue, 01 Jan 2030 18:04:05 GMT\r\n") {
+		t.Fatalf("missing If-Modified-Since header:\n%s", request)
+	}
+}
+
+func TestRunRejectsMalformedIfModifiedSince(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-if-modified-since", "yesterday", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "-if-modified-since must be RFC3339") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunAcceptsBody(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

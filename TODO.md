@@ -153,7 +153,7 @@ Questions to answer:
 - [x] Implement gzip response decompression.
 - [x] Implement chunked transfer response decoding.
 - [x] Implement simple authentication header helpers.
-- [ ] Explore cache-related request headers.
+- [x] Explore cache-related request headers.
 - [ ] Explore proxy support.
 - [ ] Explore retry behavior and idempotency.
 
@@ -345,3 +345,6 @@ changes.
 - Added Basic authentication header helpers. The CLI now accepts
   `-basic user:password` and serializes it as an `Authorization: Basic ...`
   request header.
+- Added cache-related request header helpers and CLI flags for `no-cache`,
+  `If-None-Match`, and `If-Modified-Since`. This explores revalidation headers
+  without implementing response storage.

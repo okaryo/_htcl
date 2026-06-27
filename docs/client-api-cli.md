@@ -38,6 +38,9 @@ Supported CLI options currently include:
 - `-header`: HTTP request header in `Name: value` form. Can be repeated.
 - `-body`: HTTP request body as a literal string.
 - `-basic`: Basic authentication credentials in `user:password` form.
+- `-no-cache`: send `Cache-Control: no-cache`.
+- `-if-none-match`: send `If-None-Match` with the given ETag.
+- `-if-modified-since`: send `If-Modified-Since` from an RFC3339 timestamp.
 - `-follow`: follow redirects.
 - `-max-redirects`: maximum number of redirects to follow. Defaults to `10`.
 - `-url`: URL to request. A positional URL is also accepted.

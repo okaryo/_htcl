@@ -30,6 +30,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
 	basic := flags.String("basic", "", "basic auth credentials in user:password form")
+	noCache := flags.Bool("no-cache", false, "send Cache-Control: no-cache")
+	ifNoneMatch := flags.String("if-none-match", "", "send If-None-Match with the given ETag")
+	ifModifiedSince := flags.String("if-modified-since", "", "send If-Modified-Since from an RFC3339 timestamp")
 	follow := flags.Bool("follow", false, "follow redirects")
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
@@ -51,6 +54,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	headers = append(headers, authHeaders...)
+	cacheHeaders, err := requestCacheHeaders(*noCache, *ifNoneMatch, *ifModifiedSince)
+	if err != nil {
+		return err
+	}
+	headers = append(headers, cacheHeaders...)
 
 	if *rawURL == "" && flags.NArg() > 0 {
 		*rawURL = flags.Arg(0)
@@ -235,6 +243,28 @@ func requestAuthHeaders(basic string) ([]http1.HeaderField, error) {
 		return nil, err
 	}
 	return []http1.HeaderField{{Name: "Authorization", Value: value}}, nil
+}
+
+func requestCacheHeaders(noCache bool, ifNoneMatch, ifModifiedSince string) ([]http1.HeaderField, error) {
+	var fields []http1.HeaderField
+	if noCache {
+		fields = append(fields, http1.CacheControlNoCacheHeader())
+	}
+	if ifNoneMatch != "" {
+		field, err := http1.IfNoneMatchHeader(ifNoneMatch)
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, field)
+	}
+	if ifModifiedSince != "" {
+		t, err := time.Parse(time.RFC3339, ifModifiedSince)
+		if err != nil {
+			return nil, fmt.Errorf("-if-modified-since must be RFC3339: %w", err)
+		}
+		fields = append(fields, http1.IfModifiedSinceHeader(t))
+	}
+	return fields, nil
 }
 
 func setHeaderField(fields *[]http1.HeaderField, next http1.HeaderField) {
