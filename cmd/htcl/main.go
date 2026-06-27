@@ -77,7 +77,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 	}
 	if follow {
 		jar := &http1.CookieJar{}
-		if err := jar.StoreFromResponse(response); err != nil {
+		if err := jar.StoreFromResponseURL(response, u); err != nil {
 			return err
 		}
 		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, timeout, stderr)
@@ -119,11 +119,11 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		}
 
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnce(next, nextMethod, withCookieHeader(nextHeaders, jar), nextBody, timeout, stderr)
+		response, err = getURLOnce(next, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, timeout, stderr)
 		if err != nil {
 			return nil, err
 		}
-		if err := jar.StoreFromResponse(response); err != nil {
+		if err := jar.StoreFromResponseURL(response, next); err != nil {
 			return nil, err
 		}
 		current = next
@@ -237,8 +237,8 @@ func withoutHeaderField(fields []http1.HeaderField, name string) []http1.HeaderF
 	return filtered
 }
 
-func withCookieHeader(fields []http1.HeaderField, jar *http1.CookieJar) []http1.HeaderField {
-	value := jar.HeaderValue()
+func withCookieHeader(fields []http1.HeaderField, jar *http1.CookieJar, u *url.URL) []http1.HeaderField {
+	value := jar.HeaderValueForURL(u)
 	if value == "" {
 		return fields
 	}

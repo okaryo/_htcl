@@ -148,7 +148,7 @@ Questions to answer:
   - [x] Parse `Set-Cookie` response headers into cookie name/value pairs.
   - [x] Format cookies as a request `Cookie` header value.
   - [x] Store cookies between requests in a minimal jar.
-  - [ ] Apply domain and path matching.
+  - [x] Apply domain and path matching.
   - [ ] Handle expiration and deletion.
 - [ ] Implement gzip response decompression.
 - [ ] Implement chunked transfer response decoding.
@@ -328,3 +328,6 @@ changes.
 - Added a minimal in-memory `CookieJar`. Redirect follow now stores cookies from
   redirect responses and sends them as a `Cookie` header on later redirected
   requests.
+- Added basic cookie domain and path matching. Cookies without a `Domain`
+  attribute are stored as host-only cookies, and cookies are sent only when the
+  request host and path match their stored scope.

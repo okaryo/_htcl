@@ -16,6 +16,9 @@ func TestParseSetCookieReadsNameValueBeforeAttributes(t *testing.T) {
 	if cookie.Value != "abc123" {
 		t.Fatalf("Value = %q", cookie.Value)
 	}
+	if cookie.Path != "/" {
+		t.Fatalf("Path = %q", cookie.Path)
+	}
 }
 
 func TestParseSetCookieAllowsEmptyValue(t *testing.T) {
@@ -65,10 +68,10 @@ func TestCookiesFromSetCookieHeaders(t *testing.T) {
 	if len(cookies) != 2 {
 		t.Fatalf("len(cookies) = %d", len(cookies))
 	}
-	if cookies[0] != (Cookie{Name: "session", Value: "abc123"}) {
+	if cookies[0] != (Cookie{Name: "session", Value: "abc123", Path: "/"}) {
 		t.Fatalf("cookies[0] = %#v", cookies[0])
 	}
-	if cookies[1] != (Cookie{Name: "theme", Value: "dark"}) {
+	if cookies[1] != (Cookie{Name: "theme", Value: "dark", Path: "/"}) {
 		t.Fatalf("cookies[1] = %#v", cookies[1])
 	}
 }
@@ -134,5 +137,64 @@ func TestCookieJarCookiesReturnsCopy(t *testing.T) {
 
 	if got := jar.HeaderValue(); got != "session=abc123" {
 		t.Fatalf("HeaderValue = %q", got)
+	}
+}
+
+func TestCookieJarStoresCookiesWithDefaultDomainAndPath(t *testing.T) {
+	u, err := ParseURL("http://example.test/account/profile")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	var jar CookieJar
+	jar.StoreForURL([]Cookie{{Name: "session", Value: "abc123"}}, u)
+
+	cookies := jar.Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("len(cookies) = %d", len(cookies))
+	}
+	if cookies[0].Domain != "example.test" {
+		t.Fatalf("Domain = %q", cookies[0].Domain)
+	}
+	if !cookies[0].HostOnly {
+		t.Fatal("expected host-only cookie")
+	}
+	if cookies[0].Path != "/account" {
+		t.Fatalf("Path = %q", cookies[0].Path)
+	}
+}
+
+func TestCookieJarCookiesForURLMatchesDomainAndPath(t *testing.T) {
+	var jar CookieJar
+	jar.Store([]Cookie{
+		{Name: "host", Value: "only", Domain: "example.test", Path: "/", HostOnly: true},
+		{Name: "domain", Value: "wide", Domain: "example.test", Path: "/account"},
+		{Name: "other", Value: "host", Domain: "other.test", Path: "/"},
+		{Name: "otherpath", Value: "nope", Domain: "example.test", Path: "/settings"},
+	})
+
+	u, err := ParseURL("http://sub.example.test/account/profile")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	if got := jar.HeaderValueForURL(u); got != "domain=wide" {
+		t.Fatalf("HeaderValueForURL = %q", got)
+	}
+}
+
+func TestCookieJarCookiesForURLMatchesHostOnlyCookie(t *testing.T) {
+	var jar CookieJar
+	jar.Store([]Cookie{
+		{Name: "session", Value: "abc123", Domain: "example.test", Path: "/", HostOnly: true},
+	})
+
+	u, err := ParseURL("http://example.test/account")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	if got := jar.HeaderValueForURL(u); got != "session=abc123" {
+		t.Fatalf("HeaderValueForURL = %q", got)
 	}
 }
