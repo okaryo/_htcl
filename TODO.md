@@ -333,3 +333,6 @@ changes.
   request host and path match their stored scope.
 - Added cookie expiration and deletion. `Max-Age=0` removes a stored cookie, and
   expired cookies are not sent in later request `Cookie` headers.
+- Positive `Max-Age` values are now converted to absolute expiration times when
+  stored, so `Max-Age=3600` expires after the stored duration instead of living
+  forever.

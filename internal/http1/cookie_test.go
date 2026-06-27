@@ -256,3 +256,54 @@ func TestCookieJarDeletesCookieWithMaxAgeZero(t *testing.T) {
 		t.Fatalf("len(cookies) = %d", len(cookies))
 	}
 }
+
+func TestCookieJarExpiresPositiveMaxAgeAfterStoredDuration(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	jar := CookieJar{
+		now: func() time.Time {
+			return now
+		},
+	}
+	u, err := ParseURL("http://example.test/")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	maxAge := 3600
+	jar.StoreForURL([]Cookie{{Name: "session", Value: "abc123", Path: "/", MaxAge: &maxAge}}, u)
+
+	if got := jar.HeaderValueForURL(u); got != "session=abc123" {
+		t.Fatalf("HeaderValueForURL before expiry = %q", got)
+	}
+
+	now = now.Add(2 * time.Hour)
+	if got := jar.HeaderValueForURL(u); got != "" {
+		t.Fatalf("HeaderValueForURL after expiry = %q", got)
+	}
+}
+
+func TestCookieJarMaxAgeOverridesExpires(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	jar := CookieJar{
+		now: func() time.Time {
+			return now
+		},
+	}
+	u, err := ParseURL("http://example.test/")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	maxAge := 3600
+	jar.StoreForURL([]Cookie{{
+		Name:    "session",
+		Value:   "abc123",
+		Path:    "/",
+		Expires: now.Add(-time.Hour),
+		MaxAge:  &maxAge,
+	}}, u)
+
+	if got := jar.HeaderValueForURL(u); got != "session=abc123" {
+		t.Fatalf("HeaderValueForURL = %q", got)
+	}
+}

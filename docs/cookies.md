@@ -20,6 +20,8 @@ storage:
 - `CookieJar` can select cookies for a request URL using host-only/domain
   matching and path matching.
 - `Max-Age` and `Expires` can prevent expired cookies from being sent.
+- Positive `Max-Age` values are converted to an absolute expiration time when
+  the cookie is stored. `Max-Age` takes precedence over `Expires`.
 - `Max-Age=0` deletes an existing cookie with the same name, domain, and path.
 
 The CLI currently uses this jar while following redirects, so a cookie set by a

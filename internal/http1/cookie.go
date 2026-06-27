@@ -104,6 +104,11 @@ func (j *CookieJar) Store(cookies []Cookie) {
 		return
 	}
 	for _, cookie := range cookies {
+		cookie, deleted := j.prepareCookie(cookie, nil)
+		if deleted {
+			j.delete(cookie)
+			continue
+		}
 		j.store(cookie)
 	}
 }
@@ -131,8 +136,8 @@ func (j *CookieJar) StoreForURL(cookies []Cookie, u *url.URL) {
 		return
 	}
 	for _, cookie := range cookies {
-		cookie = cookieForURL(cookie, u)
-		if cookie.expired(j.currentTime()) {
+		cookie, deleted := j.prepareCookie(cookie, u)
+		if deleted {
 			j.delete(cookie)
 			continue
 		}
@@ -203,6 +208,21 @@ func (j *CookieJar) currentTime() time.Time {
 	return time.Now()
 }
 
+func (j *CookieJar) prepareCookie(cookie Cookie, u *url.URL) (Cookie, bool) {
+	cookie = cookieForURL(cookie, u)
+	if cookie.MaxAge != nil {
+		if *cookie.MaxAge <= 0 {
+			return cookie, true
+		}
+		cookie.Expires = j.currentTime().Add(time.Duration(*cookie.MaxAge) * time.Second)
+		cookie.MaxAge = nil
+	}
+	if cookie.expired(j.currentTime()) {
+		return cookie, true
+	}
+	return cookie, false
+}
+
 func cookieForURL(cookie Cookie, u *url.URL) Cookie {
 	if u == nil {
 		return cookie
@@ -268,9 +288,6 @@ func cookiePathMatches(cookiePath, requestPath string) bool {
 }
 
 func (c Cookie) expired(now time.Time) bool {
-	if c.MaxAge != nil {
-		return *c.MaxAge <= 0
-	}
 	return !c.Expires.IsZero() && !c.Expires.After(now)
 }
 
