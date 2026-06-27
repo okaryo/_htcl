@@ -82,3 +82,57 @@ func TestCookieHeaderValue(t *testing.T) {
 		t.Fatalf("CookieHeaderValue = %q", got)
 	}
 }
+
+func TestCookieJarStoresAndReplacesCookiesByName(t *testing.T) {
+	var jar CookieJar
+	jar.Store([]Cookie{
+		{Name: "session", Value: "abc123"},
+		{Name: "theme", Value: "dark"},
+	})
+	jar.Store([]Cookie{
+		{Name: "session", Value: "def456"},
+	})
+
+	got := jar.Cookies()
+	if len(got) != 2 {
+		t.Fatalf("len(cookies) = %d", len(got))
+	}
+	if got[0] != (Cookie{Name: "session", Value: "def456"}) {
+		t.Fatalf("cookies[0] = %#v", got[0])
+	}
+	if got[1] != (Cookie{Name: "theme", Value: "dark"}) {
+		t.Fatalf("cookies[1] = %#v", got[1])
+	}
+	if header := jar.HeaderValue(); header != "session=def456; theme=dark" {
+		t.Fatalf("HeaderValue = %q", header)
+	}
+}
+
+func TestCookieJarStoresCookiesFromResponse(t *testing.T) {
+	response := &Response{
+		HeaderFields: []HeaderField{
+			{Name: "Set-Cookie", Value: "session=abc123; Path=/"},
+			{Name: "Set-Cookie", Value: "theme=dark; Path=/"},
+		},
+	}
+
+	var jar CookieJar
+	if err := jar.StoreFromResponse(response); err != nil {
+		t.Fatalf("StoreFromResponse: %v", err)
+	}
+	if got := jar.HeaderValue(); got != "session=abc123; theme=dark" {
+		t.Fatalf("HeaderValue = %q", got)
+	}
+}
+
+func TestCookieJarCookiesReturnsCopy(t *testing.T) {
+	var jar CookieJar
+	jar.Store([]Cookie{{Name: "session", Value: "abc123"}})
+
+	cookies := jar.Cookies()
+	cookies[0] = Cookie{Name: "session", Value: "changed"}
+
+	if got := jar.HeaderValue(); got != "session=abc123" {
+		t.Fatalf("HeaderValue = %q", got)
+	}
+}

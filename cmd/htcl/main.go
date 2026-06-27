@@ -76,7 +76,11 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		return err
 	}
 	if follow {
-		response, err = followRedirects(u, response, method, headers, body, maxRedirects, timeout, stderr)
+		jar := &http1.CookieJar{}
+		if err := jar.StoreFromResponse(response); err != nil {
+			return err
+		}
+		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -85,7 +89,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 	return writeResponse(stdout, response, output)
 }
 
-func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, maxRedirects int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	current := base
 	currentMethod := method
 	currentHeaders := append([]http1.HeaderField(nil), headers...)
@@ -115,8 +119,11 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		}
 
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnce(next, nextMethod, nextHeaders, nextBody, timeout, stderr)
+		response, err = getURLOnce(next, nextMethod, withCookieHeader(nextHeaders, jar), nextBody, timeout, stderr)
 		if err != nil {
+			return nil, err
+		}
+		if err := jar.StoreFromResponse(response); err != nil {
 			return nil, err
 		}
 		current = next
@@ -228,6 +235,16 @@ func withoutHeaderField(fields []http1.HeaderField, name string) []http1.HeaderF
 		filtered = append(filtered, field)
 	}
 	return filtered
+}
+
+func withCookieHeader(fields []http1.HeaderField, jar *http1.CookieJar) []http1.HeaderField {
+	value := jar.HeaderValue()
+	if value == "" {
+		return fields
+	}
+	next := append([]http1.HeaderField(nil), fields...)
+	setHeaderField(&next, http1.HeaderField{Name: "Cookie", Value: value})
+	return next
 }
 
 func validateOutputMode(output string) error {

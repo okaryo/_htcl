@@ -154,6 +154,34 @@ func TestRunFollowsRedirectChainUpToLimit(t *testing.T) {
 	}
 }
 
+func TestRunSendsCookieFromRedirectResponseOnNextRequest(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go serveRedirectWithSetCookieThenOK(t, listener, requests, "/second", "session=abc123; Path=/")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/first"
+	err = run([]string{"-follow", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	first := <-requests
+	if strings.Contains(first, "Cookie: session=abc123\r\n") {
+		t.Fatalf("first request unexpectedly sent Cookie header:\n%s", first)
+	}
+	second := <-requests
+	if !strings.Contains(second, "Cookie: session=abc123\r\n") {
+		t.Fatalf("second request missing Cookie header:\n%s", second)
+	}
+}
+
 func TestRunStopsAtRedirectLimit(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -631,6 +659,37 @@ func serveRedirectThenOKWithStatus(t *testing.T, listener net.Listener, requests
 	t.Helper()
 
 	serveRedirectOnceWithStatus(t, listener, requests, statusCode, location)
+	serveOnce(t, listener, requests)
+}
+
+func serveRedirectWithSetCookieThenOK(t *testing.T, listener net.Listener, requests chan<- string, location, setCookie string) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	request, err := readHTTPRequest(conn)
+	if err != nil {
+		t.Errorf("read request: %v", err)
+		return
+	}
+	requests <- request
+
+	response := "HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nSet-Cookie: " + setCookie + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+	if _, err := io.WriteString(conn, response); err != nil {
+		t.Errorf("write response: %v", err)
+		return
+	}
+
 	serveOnce(t, listener, requests)
 }
 

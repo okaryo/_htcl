@@ -10,6 +10,10 @@ type Cookie struct {
 	Value string
 }
 
+type CookieJar struct {
+	cookies []Cookie
+}
+
 func ParseSetCookie(value string) (Cookie, error) {
 	pair, _, _ := strings.Cut(value, ";")
 	name, cookieValue, ok := strings.Cut(strings.TrimSpace(pair), "=")
@@ -42,6 +46,13 @@ func CookiesFromSetCookieHeaders(fields []HeaderField) ([]Cookie, error) {
 	return cookies, nil
 }
 
+func (r *Response) Cookies() ([]Cookie, error) {
+	if r == nil {
+		return nil, nil
+	}
+	return CookiesFromSetCookieHeaders(r.HeaderFields)
+}
+
 func CookieHeaderValue(cookies []Cookie) string {
 	var pairs []string
 	for _, cookie := range cookies {
@@ -51,6 +62,48 @@ func CookieHeaderValue(cookies []Cookie) string {
 		pairs = append(pairs, cookie.Name+"="+cookie.Value)
 	}
 	return strings.Join(pairs, "; ")
+}
+
+func (j *CookieJar) Store(cookies []Cookie) {
+	if j == nil {
+		return
+	}
+	for _, cookie := range cookies {
+		j.store(cookie)
+	}
+}
+
+func (j *CookieJar) StoreFromResponse(response *Response) error {
+	cookies, err := response.Cookies()
+	if err != nil {
+		return err
+	}
+	j.Store(cookies)
+	return nil
+}
+
+func (j *CookieJar) Cookies() []Cookie {
+	if j == nil {
+		return nil
+	}
+	return append([]Cookie(nil), j.cookies...)
+}
+
+func (j *CookieJar) HeaderValue() string {
+	if j == nil {
+		return ""
+	}
+	return CookieHeaderValue(j.cookies)
+}
+
+func (j *CookieJar) store(next Cookie) {
+	for i, cookie := range j.cookies {
+		if cookie.Name == next.Name {
+			j.cookies[i] = next
+			return
+		}
+	}
+	j.cookies = append(j.cookies, next)
 }
 
 func validateCookieName(name string) error {
