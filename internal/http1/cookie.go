@@ -3,7 +3,9 @@ package http1
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Cookie struct {
@@ -12,10 +14,13 @@ type Cookie struct {
 	Domain   string
 	Path     string
 	HostOnly bool
+	Expires  time.Time
+	MaxAge   *int
 }
 
 type CookieJar struct {
 	cookies []Cookie
+	now     func() time.Time
 }
 
 func ParseSetCookie(value string) (Cookie, error) {
@@ -44,6 +49,16 @@ func ParseSetCookie(value string) (Cookie, error) {
 			path := strings.TrimSpace(attrValue)
 			if strings.HasPrefix(path, "/") {
 				cookie.Path = path
+			}
+		case "max-age":
+			seconds, err := strconv.Atoi(strings.TrimSpace(attrValue))
+			if err == nil {
+				cookie.MaxAge = &seconds
+			}
+		case "expires":
+			expires, err := time.Parse(time.RFC1123, strings.TrimSpace(attrValue))
+			if err == nil {
+				cookie.Expires = expires
 			}
 		}
 	}
@@ -116,7 +131,12 @@ func (j *CookieJar) StoreForURL(cookies []Cookie, u *url.URL) {
 		return
 	}
 	for _, cookie := range cookies {
-		j.store(cookieForURL(cookie, u))
+		cookie = cookieForURL(cookie, u)
+		if cookie.expired(j.currentTime()) {
+			j.delete(cookie)
+			continue
+		}
+		j.store(cookie)
 	}
 }
 
@@ -133,6 +153,9 @@ func (j *CookieJar) CookiesForURL(u *url.URL) []Cookie {
 	}
 	var cookies []Cookie
 	for _, cookie := range j.cookies {
+		if cookie.expired(j.currentTime()) {
+			continue
+		}
 		if cookieMatchesURL(cookie, u) {
 			cookies = append(cookies, cookie)
 		}
@@ -162,6 +185,22 @@ func (j *CookieJar) store(next Cookie) {
 		}
 	}
 	j.cookies = append(j.cookies, next)
+}
+
+func (j *CookieJar) delete(target Cookie) {
+	for i, cookie := range j.cookies {
+		if cookie.Name == target.Name && cookie.Domain == target.Domain && cookie.Path == target.Path {
+			j.cookies = append(j.cookies[:i], j.cookies[i+1:]...)
+			return
+		}
+	}
+}
+
+func (j *CookieJar) currentTime() time.Time {
+	if j != nil && j.now != nil {
+		return j.now()
+	}
+	return time.Now()
 }
 
 func cookieForURL(cookie Cookie, u *url.URL) Cookie {
@@ -226,6 +265,13 @@ func cookiePathMatches(cookiePath, requestPath string) bool {
 		return strings.HasSuffix(cookiePath, "/") || requestPath[len(cookiePath)] == '/'
 	}
 	return false
+}
+
+func (c Cookie) expired(now time.Time) bool {
+	if c.MaxAge != nil {
+		return *c.MaxAge <= 0
+	}
+	return !c.Expires.IsZero() && !c.Expires.After(now)
 }
 
 func validateCookieName(name string) error {

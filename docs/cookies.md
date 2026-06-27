@@ -19,8 +19,11 @@ storage:
   values that use the same name.
 - `CookieJar` can select cookies for a request URL using host-only/domain
   matching and path matching.
+- `Max-Age` and `Expires` can prevent expired cookies from being sent.
+- `Max-Age=0` deletes an existing cookie with the same name, domain, and path.
 
 The CLI currently uses this jar while following redirects, so a cookie set by a
 redirect response can be sent on the next redirected request.
 
-Expiration, deletion, and security attributes are later steps.
+Security attributes such as `Secure`, `HttpOnly`, and `SameSite` are later
+steps.

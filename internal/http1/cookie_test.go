@@ -3,6 +3,7 @@ package http1
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseSetCookieReadsNameValueBeforeAttributes(t *testing.T) {
@@ -31,6 +32,21 @@ func TestParseSetCookieAllowsEmptyValue(t *testing.T) {
 	}
 	if cookie.Value != "" {
 		t.Fatalf("Value = %q", cookie.Value)
+	}
+	if cookie.MaxAge == nil || *cookie.MaxAge != 0 {
+		t.Fatalf("MaxAge = %#v", cookie.MaxAge)
+	}
+}
+
+func TestParseSetCookieReadsExpires(t *testing.T) {
+	cookie, err := ParseSetCookie("session=abc123; Expires=Wed, 21 Oct 2037 07:28:00 UTC")
+	if err != nil {
+		t.Fatalf("ParseSetCookie: %v", err)
+	}
+
+	want := time.Date(2037, 10, 21, 7, 28, 0, 0, time.UTC)
+	if !cookie.Expires.Equal(want) {
+		t.Fatalf("Expires = %s, want %s", cookie.Expires, want)
 	}
 }
 
@@ -196,5 +212,47 @@ func TestCookieJarCookiesForURLMatchesHostOnlyCookie(t *testing.T) {
 
 	if got := jar.HeaderValueForURL(u); got != "session=abc123" {
 		t.Fatalf("HeaderValueForURL = %q", got)
+	}
+}
+
+func TestCookieJarSkipsExpiredCookies(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	jar := CookieJar{
+		now: func() time.Time {
+			return now
+		},
+	}
+	jar.Store([]Cookie{
+		{Name: "old", Value: "gone", Domain: "example.test", Path: "/", Expires: now.Add(-time.Hour)},
+		{Name: "fresh", Value: "ok", Domain: "example.test", Path: "/", Expires: now.Add(time.Hour)},
+	})
+
+	u, err := ParseURL("http://example.test/")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	if got := jar.HeaderValueForURL(u); got != "fresh=ok" {
+		t.Fatalf("HeaderValueForURL = %q", got)
+	}
+}
+
+func TestCookieJarDeletesCookieWithMaxAgeZero(t *testing.T) {
+	u, err := ParseURL("http://example.test/")
+	if err != nil {
+		t.Fatalf("ParseURL: %v", err)
+	}
+
+	var jar CookieJar
+	jar.StoreForURL([]Cookie{{Name: "session", Value: "abc123", Path: "/"}}, u)
+
+	zero := 0
+	jar.StoreForURL([]Cookie{{Name: "session", Value: "", Path: "/", MaxAge: &zero}}, u)
+
+	if got := jar.HeaderValueForURL(u); got != "" {
+		t.Fatalf("HeaderValueForURL = %q", got)
+	}
+	if cookies := jar.Cookies(); len(cookies) != 0 {
+		t.Fatalf("len(cookies) = %d", len(cookies))
 	}
 }

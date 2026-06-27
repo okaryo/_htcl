@@ -144,12 +144,12 @@ Questions to answer:
   - [x] Follow redirects.
   - [x] Add a redirect limit.
   - [x] Decide method/body behavior for `301`, `302`, `303`, `307`, and `308`.
-- [ ] Implement cookies.
+- [x] Implement cookies.
   - [x] Parse `Set-Cookie` response headers into cookie name/value pairs.
   - [x] Format cookies as a request `Cookie` header value.
   - [x] Store cookies between requests in a minimal jar.
   - [x] Apply domain and path matching.
-  - [ ] Handle expiration and deletion.
+  - [x] Handle expiration and deletion.
 - [ ] Implement gzip response decompression.
 - [ ] Implement chunked transfer response decoding.
 - [ ] Implement simple authentication header helpers.
@@ -331,3 +331,5 @@ changes.
 - Added basic cookie domain and path matching. Cookies without a `Domain`
   attribute are stored as host-only cookies, and cookies are sent only when the
   request host and path match their stored scope.
+- Added cookie expiration and deletion. `Max-Age=0` removes a stored cookie, and
+  expired cookies are not sent in later request `Cookie` headers.
