@@ -2,6 +2,8 @@ package http1
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -92,6 +94,10 @@ func ReadResponse(r io.Reader) (*Response, error) {
 	}
 	if ok {
 		body, err := ReadFixedBody(buffered, length)
+		if err != nil {
+			return nil, err
+		}
+		body, err = DecodeResponseBody(headers, body)
 		if err != nil {
 			return nil, err
 		}
@@ -190,6 +196,28 @@ func ReadFixedBody(r io.Reader, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("read fixed response body: %w", err)
 	}
 	return body, nil
+}
+
+func DecodeResponseBody(fields []HeaderField, body []byte) ([]byte, error) {
+	encoding, ok := HeaderValue(fields, "Content-Encoding")
+	if !ok || encoding == "" || strings.EqualFold(encoding, "identity") {
+		return body, nil
+	}
+	if !strings.EqualFold(encoding, "gzip") {
+		return nil, fmt.Errorf("unsupported Content-Encoding %q", encoding)
+	}
+
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("open gzip response body: %w", err)
+	}
+	defer reader.Close()
+
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read gzip response body: %w", err)
+	}
+	return decoded, nil
 }
 
 func rejectUnsupportedTransferEncoding(fields []HeaderField) error {

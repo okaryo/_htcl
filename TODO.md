@@ -150,7 +150,7 @@ Questions to answer:
   - [x] Store cookies between requests in a minimal jar.
   - [x] Apply domain and path matching.
   - [x] Handle expiration and deletion.
-- [ ] Implement gzip response decompression.
+- [x] Implement gzip response decompression.
 - [ ] Implement chunked transfer response decoding.
 - [ ] Implement simple authentication header helpers.
 - [ ] Explore cache-related request headers.
@@ -336,3 +336,6 @@ changes.
 - Positive `Max-Age` values are now converted to absolute expiration times when
   stored, so `Max-Age=3600` expires after the stored duration instead of living
   forever.
+- Added gzip response body decompression for fixed-length responses. The parser
+  reads the compressed body according to `Content-Length`, then decodes it when
+  `Content-Encoding: gzip` is present.

@@ -1,6 +1,9 @@
 package http1
 
 import (
+	"bytes"
+	"compress/gzip"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -49,6 +52,41 @@ func TestReadResponseHandlesPartialReads(t *testing.T) {
 	}
 	if got := string(response.Body); got != "hello" {
 		t.Fatalf("Body = %q", got)
+	}
+}
+
+func TestReadResponseDecodesGzipBody(t *testing.T) {
+	body := gzipBytes(t, "hello")
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Content-Encoding: gzip\r\n" +
+		fmt.Sprintf("Content-Length: %d\r\n", len(body)) +
+		"\r\n" +
+		string(body)
+
+	response, err := ReadResponse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ReadResponse: %v", err)
+	}
+	if got := string(response.Body); got != "hello" {
+		t.Fatalf("Body = %q", got)
+	}
+}
+
+func TestReadResponseRejectsUnsupportedContentEncoding(t *testing.T) {
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Content-Encoding: br\r\n" +
+		"Content-Length: 5\r\n" +
+		"\r\n" +
+		"hello"
+
+	_, err := ReadResponse(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "unsupported Content-Encoding") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -122,4 +160,18 @@ func TestReadResponseRejectsUnsupportedTransferEncoding(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported Transfer-Encoding") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func gzipBytes(t *testing.T, value string) []byte {
+	t.Helper()
+
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write([]byte(value)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return compressed.Bytes()
 }
