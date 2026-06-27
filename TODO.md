@@ -151,7 +151,7 @@ Questions to answer:
   - [x] Apply domain and path matching.
   - [x] Handle expiration and deletion.
 - [x] Implement gzip response decompression.
-- [ ] Implement chunked transfer response decoding.
+- [x] Implement chunked transfer response decoding.
 - [ ] Implement simple authentication header helpers.
 - [ ] Explore cache-related request headers.
 - [ ] Explore proxy support.
@@ -339,3 +339,6 @@ changes.
 - Added gzip response body decompression for fixed-length responses. The parser
   reads the compressed body according to `Content-Length`, then decodes it when
   `Content-Encoding: gzip` is present.
+- Added chunked transfer response decoding. The parser now reads chunk sizes,
+  joins chunk data, discards trailers, and then applies content decoding such as
+  gzip.

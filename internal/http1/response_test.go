@@ -73,6 +73,47 @@ func TestReadResponseDecodesGzipBody(t *testing.T) {
 	}
 }
 
+func TestReadResponseDecodesChunkedBody(t *testing.T) {
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Transfer-Encoding: chunked\r\n" +
+		"\r\n" +
+		"5\r\nhello\r\n" +
+		"6;ignored=true\r\n world\r\n" +
+		"0\r\n" +
+		"X-Trailer: ignored\r\n" +
+		"\r\n"
+
+	response, err := ReadResponse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ReadResponse: %v", err)
+	}
+	if got := string(response.Body); got != "hello world" {
+		t.Fatalf("Body = %q", got)
+	}
+}
+
+func TestReadResponseDecodesGzipChunkedBody(t *testing.T) {
+	body := gzipBytes(t, "hello")
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Transfer-Encoding: chunked\r\n" +
+		"Content-Encoding: gzip\r\n" +
+		"\r\n" +
+		fmt.Sprintf("%x\r\n", len(body)) +
+		string(body) + "\r\n" +
+		"0\r\n" +
+		"\r\n"
+
+	response, err := ReadResponse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ReadResponse: %v", err)
+	}
+	if got := string(response.Body); got != "hello" {
+		t.Fatalf("Body = %q", got)
+	}
+}
+
 func TestReadResponseRejectsUnsupportedContentEncoding(t *testing.T) {
 	input := "" +
 		"HTTP/1.1 200 OK\r\n" +
@@ -150,7 +191,7 @@ func TestReadResponseRejectsIncompleteFixedBody(t *testing.T) {
 func TestReadResponseRejectsUnsupportedTransferEncoding(t *testing.T) {
 	input := "" +
 		"HTTP/1.1 200 OK\r\n" +
-		"Transfer-Encoding: chunked\r\n" +
+		"Transfer-Encoding: gzip\r\n" +
 		"\r\n"
 
 	_, err := ReadResponse(strings.NewReader(input))
@@ -158,6 +199,38 @@ func TestReadResponseRejectsUnsupportedTransferEncoding(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !strings.Contains(err.Error(), "unsupported Transfer-Encoding") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadResponseRejectsInvalidChunkSize(t *testing.T) {
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Transfer-Encoding: chunked\r\n" +
+		"\r\n" +
+		"nope\r\n"
+
+	_, err := ReadResponse(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "invalid chunk size") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadResponseRejectsMalformedChunkTerminator(t *testing.T) {
+	input := "" +
+		"HTTP/1.1 200 OK\r\n" +
+		"Transfer-Encoding: chunked\r\n" +
+		"\r\n" +
+		"5\r\nhelloXX"
+
+	_, err := ReadResponse(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "chunk data must end with CRLF") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

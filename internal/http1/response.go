@@ -88,21 +88,29 @@ func ReadResponse(r io.Reader) (*Response, error) {
 		return nil, err
 	}
 
-	length, ok, err := ContentLength(headers)
+	var body []byte
+	if HasTransferEncoding(headers, "chunked") {
+		body, err = ReadChunkedBody(lineReader)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		length, ok, err := ContentLength(headers)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			body, err = ReadFixedBody(buffered, length)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	body, err = DecodeResponseBody(headers, body)
 	if err != nil {
 		return nil, err
 	}
-	if ok {
-		body, err := ReadFixedBody(buffered, length)
-		if err != nil {
-			return nil, err
-		}
-		body, err = DecodeResponseBody(headers, body)
-		if err != nil {
-			return nil, err
-		}
-		response.Body = body
-	}
+	response.Body = body
 
 	return response, nil
 }
@@ -198,6 +206,44 @@ func ReadFixedBody(r io.Reader, length int64) ([]byte, error) {
 	return body, nil
 }
 
+func ReadChunkedBody(r *LineReader) ([]byte, error) {
+	var body []byte
+	for {
+		sizeLine, err := r.ReadLine()
+		if err != nil {
+			return nil, fmt.Errorf("read chunk size: %w", err)
+		}
+		sizeText, _, _ := strings.Cut(sizeLine, ";")
+		size, err := strconv.ParseInt(strings.TrimSpace(sizeText), 16, 64)
+		if err != nil || size < 0 {
+			return nil, fmt.Errorf("invalid chunk size %q", sizeLine)
+		}
+		if size == 0 {
+			if _, err := ReadHeaderFields(r); err != nil {
+				return nil, fmt.Errorf("read trailers: %w", err)
+			}
+			return body, nil
+		}
+		if size > int64(int(size)) {
+			return nil, fmt.Errorf("chunk size is too large for this platform")
+		}
+
+		chunk := make([]byte, int(size))
+		if _, err := io.ReadFull(r.reader, chunk); err != nil {
+			return nil, fmt.Errorf("read chunk data: %w", err)
+		}
+		body = append(body, chunk...)
+
+		crlf := make([]byte, 2)
+		if _, err := io.ReadFull(r.reader, crlf); err != nil {
+			return nil, fmt.Errorf("read chunk terminator: %w", err)
+		}
+		if crlf[0] != '\r' || crlf[1] != '\n' {
+			return nil, fmt.Errorf("chunk data must end with CRLF")
+		}
+	}
+}
+
 func DecodeResponseBody(fields []HeaderField, body []byte) ([]byte, error) {
 	encoding, ok := HeaderValue(fields, "Content-Encoding")
 	if !ok || encoding == "" || strings.EqualFold(encoding, "identity") {
@@ -225,12 +271,29 @@ func rejectUnsupportedTransferEncoding(fields []HeaderField) error {
 		if !strings.EqualFold(field.Name, "Transfer-Encoding") {
 			continue
 		}
-		if strings.EqualFold(field.Value, "identity") {
-			continue
+		for _, part := range strings.Split(field.Value, ",") {
+			token := strings.TrimSpace(part)
+			if strings.EqualFold(token, "identity") || strings.EqualFold(token, "chunked") {
+				continue
+			}
+			return fmt.Errorf("unsupported Transfer-Encoding %q", field.Value)
 		}
-		return fmt.Errorf("unsupported Transfer-Encoding %q", field.Value)
 	}
 	return nil
+}
+
+func HasTransferEncoding(fields []HeaderField, token string) bool {
+	for _, field := range fields {
+		if !strings.EqualFold(field.Name, "Transfer-Encoding") {
+			continue
+		}
+		for _, part := range strings.Split(field.Value, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), token) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateHeaderFieldName(name string) error {

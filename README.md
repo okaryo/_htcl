@@ -138,3 +138,4 @@ later learning steps.
 - `docs/cookies.md`: notes on cookie parsing, formatting, and future cookie jar
   behavior.
 - `docs/compression.md`: notes on gzip response body decompression.
+- `docs/chunked-transfer.md`: notes on chunked transfer response decoding.
