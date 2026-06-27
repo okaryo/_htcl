@@ -399,6 +399,47 @@ func TestRunAcceptsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsBasicAuth(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/private"
+	err = run([]string{
+		"-basic", "alice:secret",
+		"-timeout", "2s",
+		rawURL,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	request := <-requests
+	if !strings.Contains(request, "Authorization: Basic YWxpY2U6c2VjcmV0\r\n") {
+		t.Fatalf("missing Authorization header:\n%s", request)
+	}
+}
+
+func TestRunRejectsMalformedBasicAuth(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-basic", "alice", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "-basic must use user:password form") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunAcceptsBody(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

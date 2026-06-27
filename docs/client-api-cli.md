@@ -37,6 +37,7 @@ Supported CLI options currently include:
 - `-method`: HTTP method. Defaults to `GET`.
 - `-header`: HTTP request header in `Name: value` form. Can be repeated.
 - `-body`: HTTP request body as a literal string.
+- `-basic`: Basic authentication credentials in `user:password` form.
 - `-follow`: follow redirects.
 - `-max-redirects`: maximum number of redirects to follow. Defaults to `10`.
 - `-url`: URL to request. A positional URL is also accepted.

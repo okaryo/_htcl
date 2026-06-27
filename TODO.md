@@ -152,7 +152,7 @@ Questions to answer:
   - [x] Handle expiration and deletion.
 - [x] Implement gzip response decompression.
 - [x] Implement chunked transfer response decoding.
-- [ ] Implement simple authentication header helpers.
+- [x] Implement simple authentication header helpers.
 - [ ] Explore cache-related request headers.
 - [ ] Explore proxy support.
 - [ ] Explore retry behavior and idempotency.
@@ -342,3 +342,6 @@ changes.
 - Added chunked transfer response decoding. The parser now reads chunk sizes,
   joins chunk data, discards trailers, and then applies content decoding such as
   gzip.
+- Added Basic authentication header helpers. The CLI now accepts
+  `-basic user:password` and serializes it as an `Authorization: Basic ...`
+  request header.

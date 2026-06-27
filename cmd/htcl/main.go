@@ -29,6 +29,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	rawURL := flags.String("url", "", "HTTP URL to request")
 	method := flags.String("method", "GET", "HTTP method")
 	body := flags.String("body", "", "HTTP request body as a literal string")
+	basic := flags.String("basic", "", "basic auth credentials in user:password form")
 	follow := flags.Bool("follow", false, "follow redirects")
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
@@ -45,6 +46,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if *maxRedirects < 0 {
 		return fmt.Errorf("-max-redirects must be zero or greater")
 	}
+	authHeaders, err := requestAuthHeaders(*basic)
+	if err != nil {
+		return err
+	}
+	headers = append(headers, authHeaders...)
 
 	if *rawURL == "" && flags.NArg() > 0 {
 		*rawURL = flags.Arg(0)
@@ -214,6 +220,21 @@ func requestHeaderFields(host string, custom []http1.HeaderField) []http1.Header
 		setHeaderField(&fields, field)
 	}
 	return fields
+}
+
+func requestAuthHeaders(basic string) ([]http1.HeaderField, error) {
+	if basic == "" {
+		return nil, nil
+	}
+	username, password, ok := strings.Cut(basic, ":")
+	if !ok {
+		return nil, fmt.Errorf("-basic must use user:password form")
+	}
+	value, err := http1.BasicAuthorizationValue(username, password)
+	if err != nil {
+		return nil, err
+	}
+	return []http1.HeaderField{{Name: "Authorization", Value: value}}, nil
 }
 
 func setHeaderField(fields *[]http1.HeaderField, next http1.HeaderField) {
