@@ -3,6 +3,7 @@ package http1
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +13,7 @@ import (
 type Client struct {
 	Timeout     time.Duration
 	IdleTimeout time.Duration
+	TLSConfig   *tls.Config
 	idle        map[string]idleConnection
 	now         func() time.Time
 }
@@ -66,6 +68,50 @@ func (c Client) DoContext(ctx context.Context, address string, request *Request)
 	defer conn.Close()
 
 	return NewConnection(conn, timeout).RoundTripContext(ctx, request)
+}
+
+func (c Client) DoTLS(address, serverName string, request *Request) (*Response, error) {
+	return c.DoTLSContext(context.Background(), address, serverName, request)
+}
+
+func (c Client) DoTLSContext(ctx context.Context, address, serverName string, request *Request) (*Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	request = request.Clone()
+	if request == nil {
+		return nil, fmt.Errorf("request is nil")
+	}
+	request.SetHeader("Connection", "close")
+
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
+	}
+	defer conn.Close()
+
+	config, err := c.tlsConfig(serverName)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, config)
+	if err := tlsConn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, fmt.Errorf("set tls deadline: %w", err)
+	}
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("tls handshake canceled: %w", ctxErr)
+		}
+		return nil, fmt.Errorf("tls handshake with %s: %w", serverName, err)
+	}
+
+	return NewConnection(tlsConn, timeout).RoundTripContext(ctx, request)
 }
 
 func (c *Client) DoReusable(address string, request *Request) (*Response, error) {
@@ -151,6 +197,21 @@ func (c *Client) currentTime() time.Time {
 		return c.now()
 	}
 	return time.Now()
+}
+
+func (c Client) tlsConfig(serverName string) (*tls.Config, error) {
+	if serverName == "" {
+		return nil, fmt.Errorf("TLS server name is required")
+	}
+
+	config := &tls.Config{ServerName: serverName}
+	if c.TLSConfig != nil {
+		config = c.TLSConfig.Clone()
+		if config.ServerName == "" {
+			config.ServerName = serverName
+		}
+	}
+	return config, nil
 }
 
 func (c *Client) dialContext(ctx context.Context, address string) (*Connection, error) {

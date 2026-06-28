@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -123,6 +125,19 @@ func TestRunRejectsHTTPSProxyUntilConnectIsImplemented(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !strings.Contains(err.Error(), "HTTP proxy URLs must use http scheme") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunRejectsHTTPSURLThroughHTTPProxyUntilConnectIsImplemented(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-proxy", "http://proxy.test", "https://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "https through an HTTP proxy requires CONNECT support") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -776,16 +791,36 @@ func TestRunRejectsMalformedHeaderFlag(t *testing.T) {
 	}
 }
 
-func TestRunRejectsHTTPSUntilTLSIsImplemented(t *testing.T) {
+func TestRunAcceptsHTTPSURLWithInsecureTLS(t *testing.T) {
+	requests := make(chan string, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.Method + " " + r.URL.RequestURI() + " " + r.Proto + "\r\nHost: " + r.Host + "\r\n"
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("Connection", "close")
+		fmt.Fprint(w, "hello")
+	}))
+	defer server.Close()
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := run([]string{"https://example.test/"}, &stdout, &stderr)
-	if err == nil {
-		t.Fatal("expected an error")
+	err := run([]string{"-insecure", "-timeout", "2s", server.URL + "/secure?q=1"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
 	}
-	if !strings.Contains(err.Error(), "https URLs require TLS support") {
-		t.Fatalf("unexpected error: %v", err)
+
+	request := <-requests
+	if !strings.HasPrefix(request, "GET /secure?q=1 HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
+	}
+	if !strings.Contains(request, "Host: "+strings.TrimPrefix(server.URL, "https://")+"\r\n") {
+		t.Fatalf("host mismatch:\n%s", request)
+	}
+	if !strings.Contains(stderr.String(), "performing TLS handshake") {
+		t.Fatalf("missing TLS handshake log:\n%s", stderr.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "hello") {
+		t.Fatalf("response body mismatch:\n%s", stdout.String())
 	}
 }
 

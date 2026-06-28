@@ -45,6 +45,7 @@ Supported CLI options currently include:
 - `-max-redirects`: maximum number of redirects to follow. Defaults to `10`.
 - `-proxy`: HTTP proxy URL for URL-based requests.
 - `-retries`: maximum retry attempts for idempotent URL-based requests.
+- `-insecure`: skip TLS certificate verification for local HTTPS experiments.
 - `-url`: URL to request. A positional URL is also accepted.
 - `-addr`: TCP address for lower-level observation.
 - `-host`: HTTP `Host` header for lower-level observation.
@@ -69,6 +70,10 @@ example `GET http://example.test/path HTTP/1.1`. HTTPS proxy tunneling with
 When `-retries` is greater than zero, failed URL-based requests may be retried
 only for idempotent methods such as `GET`, `HEAD`, `PUT`, and `DELETE`.
 Non-idempotent methods such as `POST` are not retried automatically.
+
+When the URL uses `https://`, the CLI connects with TLS before writing the same
+HTTP/1.1 request. Certificate verification uses Go's standard TLS behavior
+unless `-insecure` is set.
 
 Output modes are handled only by the CLI. The client package still returns a
 parsed `Response`; the command chooses which parts to print.

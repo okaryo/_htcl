@@ -167,7 +167,7 @@ Questions to answer:
 
 ### 8. HTTPS And TLS
 
-- [ ] Connect with TLS for `https://` URLs.
+- [x] Connect with TLS for `https://` URLs.
 - [ ] Observe the TLS handshake.
 - [ ] Verify certificates using standard library behavior.
 - [ ] Study Server Name Indication.
@@ -357,3 +357,6 @@ changes.
   `-retries`, but retries only idempotent methods such as `GET`, `HEAD`, `PUT`,
   and `DELETE`; detailed error phase classification and backoff remain later
   robustness work.
+- Added direct HTTPS support by wrapping the TCP connection with TLS before
+  writing the existing HTTP/1.1 request. The CLI now accepts `https://` URLs;
+  HTTPS through an HTTP proxy still waits for later `CONNECT` support.

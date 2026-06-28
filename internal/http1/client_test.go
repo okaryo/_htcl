@@ -3,9 +3,14 @@ package http1
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +56,54 @@ func TestClientDoSendsRequestReadsResponseAndClosesConnection(t *testing.T) {
 	}
 	if !<-closed {
 		t.Fatal("client did not close the connection")
+	}
+}
+
+func TestClientDoTLSUsesTLSConnectionAndServerName(t *testing.T) {
+	requests := make(chan string, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.Method + " " + r.URL.RequestURI() + " " + r.Proto + "\r\nHost: " + r.Host + "\r\n"
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("Connection", "close")
+		io.WriteString(w, "hello")
+	}))
+	defer server.Close()
+
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	request, err := NewRequest("GET", "/hello", []HeaderField{
+		{Name: "Host", Value: u.Host},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	client := Client{
+		Timeout:   2 * time.Second,
+		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+	response, err := client.DoTLS(u.Host, u.Hostname(), request)
+	if err != nil {
+		t.Fatalf("DoTLS: %v", err)
+	}
+
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+	if got := string(response.Body); got != "hello" {
+		t.Fatalf("Body = %q", got)
+	}
+	gotRequest := <-requests
+	if !strings.HasPrefix(gotRequest, "GET /hello HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", gotRequest)
+	}
+	if !strings.Contains(gotRequest, "Host: "+u.Host+"\r\n") {
+		t.Fatalf("Host header mismatch:\n%s", gotRequest)
 	}
 }
 

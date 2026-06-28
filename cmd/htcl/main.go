@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -37,6 +38,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	proxyRawURL := flags.String("proxy", "", "HTTP proxy URL")
 	retries := flags.Int("retries", 0, "maximum retry attempts for idempotent requests")
+	insecureTLS := flags.Bool("insecure", false, "skip TLS certificate verification")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
@@ -69,7 +71,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *retries, *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *retries, *insecureTLS, *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -84,7 +86,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, retries int, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, retries int, insecureTLS bool, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -94,7 +96,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		return err
 	}
 
-	response, err := getURLOnceWithRetries(u, proxy, method, headers, body, retries, timeout, stderr)
+	response, err := getURLOnceWithRetries(u, proxy, method, headers, body, retries, insecureTLS, timeout, stderr)
 	if err != nil {
 		return err
 	}
@@ -103,7 +105,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		if err := jar.StoreFromResponseURL(response, u); err != nil {
 			return err
 		}
-		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, proxy, retries, timeout, stderr)
+		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, proxy, retries, insecureTLS, timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -126,7 +128,7 @@ func parseProxyURL(rawURL string) (*url.URL, error) {
 	return proxy, nil
 }
 
-func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, proxy *url.URL, retries int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, proxy *url.URL, retries int, insecureTLS bool, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	current := base
 	currentMethod := method
 	currentHeaders := append([]http1.HeaderField(nil), headers...)
@@ -156,7 +158,7 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		}
 
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnceWithRetries(next, proxy, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, retries, timeout, stderr)
+		response, err = getURLOnceWithRetries(next, proxy, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, retries, insecureTLS, timeout, stderr)
 		if err != nil {
 			return nil, err
 		}
@@ -170,9 +172,9 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 	}
 }
 
-func getURLOnceWithRetries(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, retries int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func getURLOnceWithRetries(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, retries int, insecureTLS bool, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	for attempt := 0; ; attempt++ {
-		response, err := getURLOnce(u, proxy, method, headers, body, timeout, stderr)
+		response, err := getURLOnce(u, proxy, method, headers, body, insecureTLS, timeout, stderr)
 		if err == nil {
 			return response, nil
 		}
@@ -183,9 +185,9 @@ func getURLOnceWithRetries(u *url.URL, proxy *url.URL, method string, headers []
 	}
 }
 
-func getURLOnce(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
-	if u.Scheme == "https" {
-		return nil, fmt.Errorf("https URLs require TLS support, which is not implemented yet")
+func getURLOnce(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, insecureTLS bool, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+	if u.Scheme == "https" && proxy != nil {
+		return nil, fmt.Errorf("https through an HTTP proxy requires CONNECT support, which is not implemented yet")
 	}
 
 	addressURL := u
@@ -209,6 +211,9 @@ func getURLOnce(u *url.URL, proxy *url.URL, method string, headers []http1.Heade
 		return nil, err
 	}
 
+	if u.Scheme == "https" {
+		return doHTTPS(address, u.Hostname(), request, timeout, insecureTLS, stderr)
+	}
 	return doHTTP(address, request, timeout, stderr)
 }
 
@@ -235,6 +240,23 @@ func doHTTP(address string, request *http1.Request, timeout time.Duration, stder
 
 	client := http1.Client{Timeout: timeout}
 	response, err := client.Do(address, request)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func doHTTPS(address, serverName string, request *http1.Request, timeout time.Duration, insecureTLS bool, stderr io.Writer) (*http1.Response, error) {
+	fmt.Fprintf(stderr, "dialing tls %s\n", address)
+	fmt.Fprintln(stderr, "performing TLS handshake")
+	fmt.Fprintln(stderr, "writing HTTP request")
+	fmt.Fprintln(stderr, "reading HTTP response")
+
+	client := http1.Client{Timeout: timeout}
+	if insecureTLS {
+		client.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	response, err := client.DoTLS(address, serverName, request)
 	if err != nil {
 		return nil, err
 	}

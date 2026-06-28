@@ -117,9 +117,15 @@ Retry an idempotent request after a transport/protocol failure:
 go run ./cmd/htcl -retries 1 http://127.0.0.1:8080/unstable
 ```
 
-The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
-response status line, headers, and fixed-length body, then prints the parsed
-response.
+Send a direct HTTPS request:
+
+```sh
+go run ./cmd/htcl https://example.test/hello
+```
+
+The command opens a TCP connection, wraps it with TLS for `https://` URLs,
+writes a manual HTTP/1.1 request, parses the response status line, headers, and
+fixed-length body, then prints the parsed response.
 
 The default timeout is 30 seconds. To make blocking behavior easier to observe:
 
@@ -155,3 +161,4 @@ later learning steps.
 - `docs/cache.md`: notes on cache-related request headers.
 - `docs/proxy.md`: notes on plain HTTP proxy requests.
 - `docs/retries.md`: notes on retry behavior and idempotency.
+- `docs/tls-https.md`: notes on direct HTTPS connections.
