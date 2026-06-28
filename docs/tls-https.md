@@ -34,6 +34,26 @@ Host: example.test
 
 TLS changes the connection, not the HTTP request model.
 
+## Plain HTTP And HTTPS Compared
+
+For a direct request, the HTTP layer keeps the same shape:
+
+```http
+GET /path?q=1 HTTP/1.1
+Host: example.test
+```
+
+The difference is where those bytes are written:
+
+| URL scheme | Connection setup | Where HTTP bytes go |
+| --- | --- | --- |
+| `http://` | TCP connect | directly to TCP |
+| `https://` | TCP connect, then TLS handshake | into the TLS-wrapped connection |
+
+So HTTPS adds confidentiality, integrity, and server authentication around the
+connection. It does not by itself change the request target, headers, response
+status line, or HTTP/1.1 body framing rules.
+
 ## Server Name
 
 The client passes the URL host name as the TLS server name. That name is used by

@@ -309,6 +309,66 @@ func TestClientDoTLSNegotiatesHTTP11WithALPN(t *testing.T) {
 	}
 }
 
+func TestClientDoAndDoTLSUseSameHTTPRequestShape(t *testing.T) {
+	httpRequests := make(chan string, 1)
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpRequests <- r.Method + " " + r.URL.RequestURI() + " " + r.Proto + "\r\nHost: " + r.Host + "\r\n"
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("Connection", "close")
+		io.WriteString(w, "hello")
+	}))
+	defer httpServer.Close()
+
+	httpsRequests := make(chan string, 1)
+	httpsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpsRequests <- r.Method + " " + r.URL.RequestURI() + " " + r.Proto + "\r\nHost: " + r.Host + "\r\n"
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("Connection", "close")
+		io.WriteString(w, "hello")
+	}))
+	defer httpsServer.Close()
+
+	httpURL, err := url.Parse(httpServer.URL)
+	if err != nil {
+		t.Fatalf("url.Parse http: %v", err)
+	}
+	httpsURL, err := url.Parse(httpsServer.URL)
+	if err != nil {
+		t.Fatalf("url.Parse https: %v", err)
+	}
+	httpRequest, err := NewRequest("GET", "/same?q=1", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest http: %v", err)
+	}
+	httpsRequest, err := NewRequest("GET", "/same?q=1", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest https: %v", err)
+	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(httpsServer.Certificate())
+	client := Client{
+		Timeout:   2 * time.Second,
+		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+	if _, err := client.Do(httpURL.Host, httpRequest); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if _, err := client.DoTLS(httpsURL.Host, httpsURL.Hostname(), httpsRequest); err != nil {
+		t.Fatalf("DoTLS: %v", err)
+	}
+
+	httpSeen := <-httpRequests
+	httpsSeen := <-httpsRequests
+	if httpSeen != httpsSeen {
+		t.Fatalf("HTTP request shape differed:\nhttp:\n%s\nhttps:\n%s", httpSeen, httpsSeen)
+	}
+}
+
 func TestClientDoOverridesConnectionKeepAliveForOneShotRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -172,7 +172,7 @@ Questions to answer:
 - [x] Verify certificates using standard library behavior.
 - [x] Study Server Name Indication.
 - [x] Explore ALPN at a high level.
-- [ ] Compare HTTPS behavior with plain HTTP behavior.
+- [x] Compare HTTPS behavior with plain HTTP behavior.
 
 Questions to answer:
 
@@ -372,3 +372,6 @@ changes.
 - Added ALPN handling for direct HTTPS requests. The client offers `http/1.1`
   by default and records the negotiated protocol in TLS handshake information,
   avoiding accidental HTTP/2 negotiation until an HTTP/2 implementation exists.
+- Compared plain HTTP and direct HTTPS behavior. The request shape remains the
+  same at the HTTP/1.1 layer; HTTPS changes the underlying connection by adding
+  TLS handshake, encryption, integrity checks, and certificate verification.
