@@ -258,6 +258,57 @@ func TestClientDoTLSSendsServerNameIndication(t *testing.T) {
 	}
 }
 
+func TestClientDoTLSNegotiatesHTTP11WithALPN(t *testing.T) {
+	serverName := "example.test"
+	cert, roots := newTestCertificate(t, serverName)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		NextProtos:   []string{"h2", "http/1.1"},
+	}
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "5")
+			w.Header().Set("Connection", "close")
+			io.WriteString(w, "hello")
+		}),
+	}
+	defer server.Close()
+	go func() {
+		if err := server.Serve(tls.NewListener(listener, tlsConfig)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("serve tls: %v", err)
+		}
+	}()
+
+	request, err := NewRequest("GET", "/", []HeaderField{
+		{Name: "Host", Value: serverName},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	client := Client{
+		Timeout:   2 * time.Second,
+		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+
+	response, info, err := client.DoTLSWithInfo(listener.Addr().String(), serverName, request)
+	if err != nil {
+		t.Fatalf("DoTLSWithInfo: %v", err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+	if info.NegotiatedProtocol != "http/1.1" {
+		t.Fatalf("negotiated protocol = %q, want http/1.1", info.NegotiatedProtocol)
+	}
+}
+
 func TestClientDoOverridesConnectionKeepAliveForOneShotRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

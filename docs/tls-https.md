@@ -96,6 +96,7 @@ After a successful handshake, the CLI prints a small TLS summary to stderr:
 tls version: TLS 1.3
 tls cipher suite: TLS_AES_128_GCM_SHA256
 tls server name: example.test
+tls negotiated protocol: http/1.1
 tls peer certificates: 2
 tls verified chains: 1
 ```
@@ -114,11 +115,25 @@ This disables certificate verification and should be used only for local
 experiments. It means the client still encrypts the connection, but it no
 longer verifies that the peer is really the requested server.
 
+## ALPN
+
+Application-Layer Protocol Negotiation is part of the TLS handshake. It lets the
+client and server agree on which application protocol will run inside the TLS
+connection.
+
+Common HTTPS clients may offer values such as:
+
+- `h2` for HTTP/2
+- `http/1.1` for HTTP/1.1
+
+This project currently has only an HTTP/1.1 request serializer and response
+parser, so it offers only `http/1.1` by default. If a server also supports
+HTTP/2, the client should still negotiate `http/1.1` until HTTP/2 support is
+implemented.
+
 ## What Is Still Missing
 
 HTTPS through an HTTP proxy is not implemented yet. That requires `CONNECT` to
 create a tunnel through the proxy before starting the TLS handshake.
 
-More detailed TLS topics are still future steps:
-
-- ALPN and HTTP/2 negotiation
+HTTP/2 support is still a future step.

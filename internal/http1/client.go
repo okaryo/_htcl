@@ -232,11 +232,19 @@ func (c Client) tlsConfig(serverName string) (*tls.Config, error) {
 		return nil, fmt.Errorf("TLS server name is required")
 	}
 
-	config := &tls.Config{ServerName: serverName}
+	config := &tls.Config{
+		ServerName: serverName,
+		NextProtos: []string{
+			"http/1.1",
+		},
+	}
 	if c.TLSConfig != nil {
 		config = c.TLSConfig.Clone()
 		if config.ServerName == "" {
 			config.ServerName = serverName
+		}
+		if len(config.NextProtos) == 0 {
+			config.NextProtos = []string{"http/1.1"}
 		}
 	}
 	return config, nil

@@ -171,7 +171,7 @@ Questions to answer:
 - [x] Observe the TLS handshake.
 - [x] Verify certificates using standard library behavior.
 - [x] Study Server Name Indication.
-- [ ] Explore ALPN at a high level.
+- [x] Explore ALPN at a high level.
 - [ ] Compare HTTPS behavior with plain HTTP behavior.
 
 Questions to answer:
@@ -369,3 +369,6 @@ changes.
 - Added a local SNI test showing that the TLS server name is sent in
   `ClientHello` independently of the TCP address and before the HTTP `Host`
   header is written.
+- Added ALPN handling for direct HTTPS requests. The client offers `http/1.1`
+  by default and records the negotiated protocol in TLS handshake information,
+  avoiding accidental HTTP/2 negotiation until an HTTP/2 implementation exists.
