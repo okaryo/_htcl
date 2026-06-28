@@ -49,6 +49,25 @@ Host header: example.test:8443
 TCP address: example.test:8443
 ```
 
+SNI is sent in the TLS `ClientHello` before the HTTP request exists. This lets a
+server choose the right certificate when many host names share the same IP
+address and port.
+
+For example, a client may connect to `127.0.0.1:8443` while still sending
+`example.test` as the TLS server name:
+
+```text
+TCP address: 127.0.0.1:8443
+TLS SNI: example.test
+Host header: example.test
+```
+
+These values often match in normal browsing, but they are different layers:
+
+- TCP address decides where the socket connects.
+- TLS SNI tells the TLS server which host name the client wants.
+- HTTP `Host` tells the HTTP server which origin the request targets.
+
 ## Current CLI Behavior
 
 The CLI now accepts direct `https://` URLs:
@@ -102,5 +121,4 @@ create a tunnel through the proxy before starting the TLS handshake.
 
 More detailed TLS topics are still future steps:
 
-- Server Name Indication details
 - ALPN and HTTP/2 negotiation

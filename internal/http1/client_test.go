@@ -3,10 +3,15 @@ package http1
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -192,6 +197,64 @@ func TestClientDoTLSRejectsHostnameMismatchBeforeRequest(t *testing.T) {
 	case <-requests:
 		t.Fatal("server received HTTP request after failed hostname verification")
 	default:
+	}
+}
+
+func TestClientDoTLSSendsServerNameIndication(t *testing.T) {
+	serverName := "example.test"
+	cert, roots := newTestCertificate(t, serverName)
+	sniValues := make(chan string, 1)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+			sniValues <- info.ServerName
+			return nil, nil
+		},
+	}
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "5")
+			w.Header().Set("Connection", "close")
+			io.WriteString(w, "hello")
+		}),
+	}
+	defer server.Close()
+	go func() {
+		if err := server.Serve(tls.NewListener(listener, tlsConfig)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("serve tls: %v", err)
+		}
+	}()
+
+	request, err := NewRequest("GET", "/", []HeaderField{
+		{Name: "Host", Value: serverName},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	client := Client{
+		Timeout:   2 * time.Second,
+		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+
+	response, info, err := client.DoTLSWithInfo(listener.Addr().String(), serverName, request)
+	if err != nil {
+		t.Fatalf("DoTLSWithInfo: %v", err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+	if got := <-sniValues; got != serverName {
+		t.Fatalf("SNI = %q, want %q", got, serverName)
+	}
+	if info.ServerName != serverName {
+		t.Fatalf("TLS info server name = %q, want %q", info.ServerName, serverName)
 	}
 }
 
@@ -810,4 +873,48 @@ func newTestRequest(t *testing.T, target string) *Request {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	return request
+}
+
+func newTestCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: serverName,
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{serverName},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("CreateCertificate: %v", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: der,
+	})
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("X509KeyPair: %v", err)
+	}
+	parsed, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("ParseCertificate: %v", err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(parsed)
+	return cert, roots
 }

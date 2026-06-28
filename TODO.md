@@ -170,7 +170,7 @@ Questions to answer:
 - [x] Connect with TLS for `https://` URLs.
 - [x] Observe the TLS handshake.
 - [x] Verify certificates using standard library behavior.
-- [ ] Study Server Name Indication.
+- [x] Study Server Name Indication.
 - [ ] Explore ALPN at a high level.
 - [ ] Compare HTTPS behavior with plain HTTP behavior.
 
@@ -366,3 +366,6 @@ changes.
 - Added tests and documentation for Go's standard TLS certificate
   verification. Untrusted certificates and hostname mismatches fail during the
   handshake before any HTTP request is written.
+- Added a local SNI test showing that the TLS server name is sent in
+  `ClientHello` independently of the TCP address and before the HTTP `Host`
+  header is written.
