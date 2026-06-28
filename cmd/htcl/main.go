@@ -256,11 +256,23 @@ func doHTTPS(address, serverName string, request *http1.Request, timeout time.Du
 	if insecureTLS {
 		client.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	response, err := client.DoTLS(address, serverName, request)
+	response, info, err := client.DoTLSWithInfo(address, serverName, request)
 	if err != nil {
 		return nil, err
 	}
+	writeTLSInfo(stderr, info)
 	return response, nil
+}
+
+func writeTLSInfo(w io.Writer, info http1.TLSInfo) {
+	fmt.Fprintf(w, "tls version: %s\n", info.Version)
+	fmt.Fprintf(w, "tls cipher suite: %s\n", info.CipherSuite)
+	fmt.Fprintf(w, "tls server name: %s\n", info.ServerName)
+	if info.NegotiatedProtocol != "" {
+		fmt.Fprintf(w, "tls negotiated protocol: %s\n", info.NegotiatedProtocol)
+	}
+	fmt.Fprintf(w, "tls peer certificates: %d\n", info.PeerCertificateCount)
+	fmt.Fprintf(w, "tls verified chains: %d\n", info.VerifiedChains)
 }
 
 type headerFlags []http1.HeaderField

@@ -60,6 +60,19 @@ go run ./cmd/htcl https://example.test/
 By default, certificate verification is handled by Go's standard `crypto/tls`
 behavior.
 
+After a successful handshake, the CLI prints a small TLS summary to stderr:
+
+```text
+tls version: TLS 1.3
+tls cipher suite: TLS_AES_128_GCM_SHA256
+tls server name: example.test
+tls peer certificates: 2
+tls verified chains: 1
+```
+
+This is not a packet-level trace. It is the negotiated connection state reported
+by Go's `tls.Conn.ConnectionState()` after `HandshakeContext` completes.
+
 For local learning servers with self-signed certificates, the CLI also has
 `-insecure`:
 
@@ -77,7 +90,6 @@ create a tunnel through the proxy before starting the TLS handshake.
 
 More detailed TLS topics are still future steps:
 
-- observing handshake state
 - certificate verification behavior
 - Server Name Indication details
 - ALPN and HTTP/2 negotiation

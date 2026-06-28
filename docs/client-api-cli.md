@@ -73,7 +73,8 @@ Non-idempotent methods such as `POST` are not retried automatically.
 
 When the URL uses `https://`, the CLI connects with TLS before writing the same
 HTTP/1.1 request. Certificate verification uses Go's standard TLS behavior
-unless `-insecure` is set.
+unless `-insecure` is set. Successful HTTPS requests also print a small TLS
+summary to stderr, including the negotiated version and cipher suite.
 
 Output modes are handled only by the CLI. The client package still returns a
 parsed `Response`; the command chooses which parts to print.

@@ -819,6 +819,18 @@ func TestRunAcceptsHTTPSURLWithInsecureTLS(t *testing.T) {
 	if !strings.Contains(stderr.String(), "performing TLS handshake") {
 		t.Fatalf("missing TLS handshake log:\n%s", stderr.String())
 	}
+	if !strings.Contains(stderr.String(), "tls version: ") {
+		t.Fatalf("missing TLS version log:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "tls cipher suite: ") {
+		t.Fatalf("missing TLS cipher suite log:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "tls server name: 127.0.0.1") {
+		t.Fatalf("missing TLS server name log:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "tls peer certificates: ") {
+		t.Fatalf("missing TLS peer certificate log:\n%s", stderr.String())
+	}
 	if !strings.HasSuffix(stdout.String(), "hello") {
 		t.Fatalf("response body mismatch:\n%s", stdout.String())
 	}

@@ -87,9 +87,9 @@ func TestClientDoTLSUsesTLSConnectionAndServerName(t *testing.T) {
 		Timeout:   2 * time.Second,
 		TLSConfig: &tls.Config{RootCAs: roots},
 	}
-	response, err := client.DoTLS(u.Host, u.Hostname(), request)
+	response, info, err := client.DoTLSWithInfo(u.Host, u.Hostname(), request)
 	if err != nil {
-		t.Fatalf("DoTLS: %v", err)
+		t.Fatalf("DoTLSWithInfo: %v", err)
 	}
 
 	if response.StatusCode != 200 {
@@ -97,6 +97,21 @@ func TestClientDoTLSUsesTLSConnectionAndServerName(t *testing.T) {
 	}
 	if got := string(response.Body); got != "hello" {
 		t.Fatalf("Body = %q", got)
+	}
+	if info.Version == "" {
+		t.Fatal("TLS version was not captured")
+	}
+	if info.CipherSuite == "" {
+		t.Fatal("TLS cipher suite was not captured")
+	}
+	if info.ServerName != u.Hostname() {
+		t.Fatalf("TLS server name = %q, want %q", info.ServerName, u.Hostname())
+	}
+	if info.PeerCertificateCount == 0 {
+		t.Fatal("peer certificate count was not captured")
+	}
+	if info.VerifiedChains == 0 {
+		t.Fatal("verified certificate chain count was not captured")
 	}
 	gotRequest := <-requests
 	if !strings.HasPrefix(gotRequest, "GET /hello HTTP/1.1\r\n") {

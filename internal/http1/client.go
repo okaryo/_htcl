@@ -29,6 +29,16 @@ type Connection struct {
 	reusable bool
 }
 
+type TLSInfo struct {
+	Version                string
+	CipherSuite            string
+	ServerName             string
+	NegotiatedProtocol     string
+	PeerCertificateCount   int
+	PeerCertificateSubject string
+	VerifiedChains         int
+}
+
 func NewConnection(conn net.Conn, timeout time.Duration) *Connection {
 	return &Connection{
 		conn:     conn,
@@ -71,10 +81,20 @@ func (c Client) DoContext(ctx context.Context, address string, request *Request)
 }
 
 func (c Client) DoTLS(address, serverName string, request *Request) (*Response, error) {
-	return c.DoTLSContext(context.Background(), address, serverName, request)
+	response, _, err := c.DoTLSContextWithInfo(context.Background(), address, serverName, request)
+	return response, err
 }
 
 func (c Client) DoTLSContext(ctx context.Context, address, serverName string, request *Request) (*Response, error) {
+	response, _, err := c.DoTLSContextWithInfo(ctx, address, serverName, request)
+	return response, err
+}
+
+func (c Client) DoTLSWithInfo(address, serverName string, request *Request) (*Response, TLSInfo, error) {
+	return c.DoTLSContextWithInfo(context.Background(), address, serverName, request)
+}
+
+func (c Client) DoTLSContextWithInfo(ctx context.Context, address, serverName string, request *Request) (*Response, TLSInfo, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -85,33 +105,41 @@ func (c Client) DoTLSContext(ctx context.Context, address, serverName string, re
 	}
 	request = request.Clone()
 	if request == nil {
-		return nil, fmt.Errorf("request is nil")
+		return nil, TLSInfo{}, fmt.Errorf("request is nil")
 	}
 	request.SetHeader("Connection", "close")
 
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
+		return nil, TLSInfo{}, fmt.Errorf("dial tcp %s: %w", address, err)
 	}
 	defer conn.Close()
 
 	config, err := c.tlsConfig(serverName)
 	if err != nil {
-		return nil, err
+		return nil, TLSInfo{}, err
 	}
 	tlsConn := tls.Client(conn, config)
 	if err := tlsConn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, fmt.Errorf("set tls deadline: %w", err)
+		return nil, TLSInfo{}, fmt.Errorf("set tls deadline: %w", err)
 	}
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("tls handshake canceled: %w", ctxErr)
+			return nil, TLSInfo{}, fmt.Errorf("tls handshake canceled: %w", ctxErr)
 		}
-		return nil, fmt.Errorf("tls handshake with %s: %w", serverName, err)
+		return nil, TLSInfo{}, fmt.Errorf("tls handshake with %s: %w", serverName, err)
 	}
 
-	return NewConnection(tlsConn, timeout).RoundTripContext(ctx, request)
+	info := TLSInfoFromConnectionState(tlsConn.ConnectionState())
+	if info.ServerName == "" {
+		info.ServerName = serverName
+	}
+	response, err := NewConnection(tlsConn, timeout).RoundTripContext(ctx, request)
+	if err != nil {
+		return nil, info, err
+	}
+	return response, info, nil
 }
 
 func (c *Client) DoReusable(address string, request *Request) (*Response, error) {
@@ -212,6 +240,21 @@ func (c Client) tlsConfig(serverName string) (*tls.Config, error) {
 		}
 	}
 	return config, nil
+}
+
+func TLSInfoFromConnectionState(state tls.ConnectionState) TLSInfo {
+	info := TLSInfo{
+		Version:              tls.VersionName(state.Version),
+		CipherSuite:          tls.CipherSuiteName(state.CipherSuite),
+		ServerName:           state.ServerName,
+		NegotiatedProtocol:   state.NegotiatedProtocol,
+		PeerCertificateCount: len(state.PeerCertificates),
+		VerifiedChains:       len(state.VerifiedChains),
+	}
+	if len(state.PeerCertificates) > 0 {
+		info.PeerCertificateSubject = state.PeerCertificates[0].Subject.String()
+	}
+	return info
 }
 
 func (c *Client) dialContext(ctx context.Context, address string) (*Connection, error) {

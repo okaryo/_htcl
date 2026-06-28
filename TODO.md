@@ -168,7 +168,7 @@ Questions to answer:
 ### 8. HTTPS And TLS
 
 - [x] Connect with TLS for `https://` URLs.
-- [ ] Observe the TLS handshake.
+- [x] Observe the TLS handshake.
 - [ ] Verify certificates using standard library behavior.
 - [ ] Study Server Name Indication.
 - [ ] Explore ALPN at a high level.
@@ -360,3 +360,6 @@ changes.
 - Added direct HTTPS support by wrapping the TCP connection with TLS before
   writing the existing HTTP/1.1 request. The CLI now accepts `https://` URLs;
   HTTPS through an HTTP proxy still waits for later `CONNECT` support.
+- Added TLS handshake observation through Go's `tls.Conn.ConnectionState`.
+  HTTPS requests now report the negotiated TLS version, cipher suite, server
+  name, peer certificate count, and verified chain count.
