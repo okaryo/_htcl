@@ -111,6 +111,12 @@ Send a request through a plain HTTP proxy:
 go run ./cmd/htcl -proxy http://127.0.0.1:8080 http://example.test/hello
 ```
 
+Retry an idempotent request after a transport/protocol failure:
+
+```sh
+go run ./cmd/htcl -retries 1 http://127.0.0.1:8080/unstable
+```
+
 The command opens a TCP connection, writes a manual HTTP/1.1 request, parses the
 response status line, headers, and fixed-length body, then prints the parsed
 response.
@@ -148,3 +154,4 @@ later learning steps.
 - `docs/authentication.md`: notes on Basic authentication headers.
 - `docs/cache.md`: notes on cache-related request headers.
 - `docs/proxy.md`: notes on plain HTTP proxy requests.
+- `docs/retries.md`: notes on retry behavior and idempotency.

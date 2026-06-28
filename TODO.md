@@ -155,7 +155,7 @@ Questions to answer:
 - [x] Implement simple authentication header helpers.
 - [x] Explore cache-related request headers.
 - [x] Explore proxy support.
-- [ ] Explore retry behavior and idempotency.
+- [x] Explore retry behavior and idempotency.
 
 Questions to answer:
 
@@ -198,6 +198,7 @@ Questions to answer:
 ### 10. Robustness And Observability
 
 - [ ] Classify network, timeout, protocol, and application errors.
+- [ ] Refine retry decisions with error phase classification and backoff.
 - [ ] Add structured debug logs.
 - [ ] Add simple timing measurements.
 - [ ] Add small reproducible test servers.
@@ -352,3 +353,7 @@ changes.
 - Added plain HTTP proxy support for URL-based requests. The CLI now connects
   to the proxy address while serializing the origin URL as an absolute-form
   request target; HTTPS `CONNECT` tunneling remains a later TLS-related step.
+- Added opt-in retry behavior for URL-based requests. The CLI now accepts
+  `-retries`, but retries only idempotent methods such as `GET`, `HEAD`, `PUT`,
+  and `DELETE`; detailed error phase classification and backoff remain later
+  robustness work.

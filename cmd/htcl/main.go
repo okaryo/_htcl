@@ -36,6 +36,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	follow := flags.Bool("follow", false, "follow redirects")
 	maxRedirects := flags.Int("max-redirects", 10, "maximum number of redirects to follow")
 	proxyRawURL := flags.String("proxy", "", "HTTP proxy URL")
+	retries := flags.Int("retries", 0, "maximum retry attempts for idempotent requests")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
@@ -49,6 +50,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	if *maxRedirects < 0 {
 		return fmt.Errorf("-max-redirects must be zero or greater")
+	}
+	if *retries < 0 {
+		return fmt.Errorf("-retries must be zero or greater")
 	}
 	authHeaders, err := requestAuthHeaders(*basic)
 	if err != nil {
@@ -65,7 +69,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *retries, *output, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -80,7 +84,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, retries int, output string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -90,7 +94,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		return err
 	}
 
-	response, err := getURLOnce(u, proxy, method, headers, body, timeout, stderr)
+	response, err := getURLOnceWithRetries(u, proxy, method, headers, body, retries, timeout, stderr)
 	if err != nil {
 		return err
 	}
@@ -99,7 +103,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		if err := jar.StoreFromResponseURL(response, u); err != nil {
 			return err
 		}
-		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, proxy, timeout, stderr)
+		response, err = followRedirects(u, response, method, headers, body, jar, maxRedirects, proxy, retries, timeout, stderr)
 		if err != nil {
 			return err
 		}
@@ -122,7 +126,7 @@ func parseProxyURL(rawURL string) (*url.URL, error) {
 	return proxy, nil
 }
 
-func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, proxy *url.URL, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+func followRedirects(base *url.URL, response *http1.Response, method string, headers []http1.HeaderField, body []byte, jar *http1.CookieJar, maxRedirects int, proxy *url.URL, retries int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
 	current := base
 	currentMethod := method
 	currentHeaders := append([]http1.HeaderField(nil), headers...)
@@ -152,7 +156,7 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		}
 
 		fmt.Fprintf(stderr, "following redirect to %s\n", next.String())
-		response, err = getURLOnce(next, proxy, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, timeout, stderr)
+		response, err = getURLOnceWithRetries(next, proxy, nextMethod, withCookieHeader(nextHeaders, jar, next), nextBody, retries, timeout, stderr)
 		if err != nil {
 			return nil, err
 		}
@@ -163,6 +167,19 @@ func followRedirects(base *url.URL, response *http1.Response, method string, hea
 		currentMethod = nextMethod
 		currentHeaders = nextHeaders
 		currentBody = nextBody
+	}
+}
+
+func getURLOnceWithRetries(u *url.URL, proxy *url.URL, method string, headers []http1.HeaderField, body []byte, retries int, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
+	for attempt := 0; ; attempt++ {
+		response, err := getURLOnce(u, proxy, method, headers, body, timeout, stderr)
+		if err == nil {
+			return response, nil
+		}
+		if attempt >= retries || !http1.IsIdempotentMethod(method) {
+			return nil, err
+		}
+		fmt.Fprintf(stderr, "retrying %s request after error: %v\n", method, err)
 	}
 }
 

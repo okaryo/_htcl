@@ -44,6 +44,7 @@ Supported CLI options currently include:
 - `-follow`: follow redirects.
 - `-max-redirects`: maximum number of redirects to follow. Defaults to `10`.
 - `-proxy`: HTTP proxy URL for URL-based requests.
+- `-retries`: maximum retry attempts for idempotent URL-based requests.
 - `-url`: URL to request. A positional URL is also accepted.
 - `-addr`: TCP address for lower-level observation.
 - `-host`: HTTP `Host` header for lower-level observation.
@@ -64,6 +65,10 @@ When `-proxy` is set, the CLI connects to the proxy address but keeps the
 origin `Host` header. The request target is serialized in absolute-form, for
 example `GET http://example.test/path HTTP/1.1`. HTTPS proxy tunneling with
 `CONNECT` is not implemented yet.
+
+When `-retries` is greater than zero, failed URL-based requests may be retried
+only for idempotent methods such as `GET`, `HEAD`, `PUT`, and `DELETE`.
+Non-idempotent methods such as `POST` are not retried automatically.
 
 Output modes are handled only by the CLI. The client package still returns a
 parsed `Response`; the command chooses which parts to print.

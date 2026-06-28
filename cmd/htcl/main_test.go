@@ -127,6 +127,73 @@ func TestRunRejectsHTTPSProxyUntilConnectIsImplemented(t *testing.T) {
 	}
 }
 
+func TestRunRetriesIdempotentGETAfterResponseReadFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 2)
+	go func() {
+		serveCloseAfterRequest(t, listener, requests, false)
+		serveOnce(t, listener, requests)
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/unstable"
+	err = run([]string{"-retries", "1", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	first := <-requests
+	if !strings.HasPrefix(first, "GET /unstable HTTP/1.1\r\n") {
+		t.Fatalf("first request line mismatch:\n%s", first)
+	}
+	second := <-requests
+	if !strings.HasPrefix(second, "GET /unstable HTTP/1.1\r\n") {
+		t.Fatalf("second request line mismatch:\n%s", second)
+	}
+	if !strings.Contains(stderr.String(), "retrying GET request after error") {
+		t.Fatalf("missing retry log:\n%s", stderr.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "hello") {
+		t.Fatalf("response body mismatch:\n%s", stdout.String())
+	}
+}
+
+func TestRunDoesNotRetryNonIdempotentPOST(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveCloseAfterRequest(t, listener, requests, true)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/submit"
+	err = run([]string{"-retries", "1", "-method", "POST", "-body", "hello", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(stderr.String(), "retrying POST request") {
+		t.Fatalf("POST should not be retried:\n%s", stderr.String())
+	}
+
+	request := <-requests
+	if !strings.HasPrefix(request, "POST /submit HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
+	}
+	if !strings.HasSuffix(request, "\r\n\r\nhello") {
+		t.Fatalf("request body mismatch:\n%s", request)
+	}
+}
+
 func TestRunFollowsOneRedirectForGETURL(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -268,6 +335,19 @@ func TestRunRejectsNegativeRedirectLimit(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !strings.Contains(err.Error(), "-max-redirects must be zero or greater") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunRejectsNegativeRetries(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := run([]string{"-retries", "-1", "http://example.test/"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "-retries must be zero or greater") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -748,6 +828,32 @@ func serveOnce(t *testing.T, listener net.Listener, requests chan<- string) {
 	if _, err := io.WriteString(conn, response); err != nil {
 		t.Errorf("write response: %v", err)
 	}
+}
+
+func serveCloseAfterRequest(t *testing.T, listener net.Listener, requests chan<- string, closeListener bool) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	if closeListener {
+		listener.Close()
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	request, err := readHTTPRequest(conn)
+	if err != nil {
+		t.Errorf("read request: %v", err)
+		return
+	}
+	requests <- request
 }
 
 func serveRedirectOnce(t *testing.T, listener net.Listener, requests chan<- string, location string) {
