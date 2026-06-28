@@ -122,6 +122,79 @@ func TestClientDoTLSUsesTLSConnectionAndServerName(t *testing.T) {
 	}
 }
 
+func TestClientDoTLSRejectsUntrustedCertificateBeforeRequest(t *testing.T) {
+	requests := make(chan struct{}, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- struct{}{}
+	}))
+	defer server.Close()
+
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	request, err := NewRequest("GET", "/", []HeaderField{
+		{Name: "Host", Value: u.Host},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	client := Client{Timeout: 2 * time.Second}
+	_, err = client.DoTLS(u.Host, u.Hostname(), request)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var unknownAuthority x509.UnknownAuthorityError
+	if !errors.As(err, &unknownAuthority) {
+		t.Fatalf("expected unknown authority error, got %v", err)
+	}
+	select {
+	case <-requests:
+		t.Fatal("server received HTTP request after failed certificate verification")
+	default:
+	}
+}
+
+func TestClientDoTLSRejectsHostnameMismatchBeforeRequest(t *testing.T) {
+	requests := make(chan struct{}, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- struct{}{}
+	}))
+	defer server.Close()
+
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	request, err := NewRequest("GET", "/", []HeaderField{
+		{Name: "Host", Value: u.Host},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	client := Client{
+		Timeout:   2 * time.Second,
+		TLSConfig: &tls.Config{RootCAs: roots},
+	}
+	_, err = client.DoTLS(u.Host, "example.test", request)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var hostnameError x509.HostnameError
+	if !errors.As(err, &hostnameError) {
+		t.Fatalf("expected hostname error, got %v", err)
+	}
+	select {
+	case <-requests:
+		t.Fatal("server received HTTP request after failed hostname verification")
+	default:
+	}
+}
+
 func TestClientDoOverridesConnectionKeepAliveForOneShotRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

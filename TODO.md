@@ -169,7 +169,7 @@ Questions to answer:
 
 - [x] Connect with TLS for `https://` URLs.
 - [x] Observe the TLS handshake.
-- [ ] Verify certificates using standard library behavior.
+- [x] Verify certificates using standard library behavior.
 - [ ] Study Server Name Indication.
 - [ ] Explore ALPN at a high level.
 - [ ] Compare HTTPS behavior with plain HTTP behavior.
@@ -363,3 +363,6 @@ changes.
 - Added TLS handshake observation through Go's `tls.Conn.ConnectionState`.
   HTTPS requests now report the negotiated TLS version, cipher suite, server
   name, peer certificate count, and verified chain count.
+- Added tests and documentation for Go's standard TLS certificate
+  verification. Untrusted certificates and hostname mismatches fail during the
+  handshake before any HTTP request is written.

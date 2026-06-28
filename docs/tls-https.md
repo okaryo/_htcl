@@ -60,6 +60,17 @@ go run ./cmd/htcl https://example.test/
 By default, certificate verification is handled by Go's standard `crypto/tls`
 behavior.
 
+That verification happens during `HandshakeContext`, before the HTTP request is
+written. At this stage Go checks the server certificate using the configured
+root certificate pool and the TLS server name:
+
+- the certificate must chain to a trusted root
+- the certificate must be valid for the requested server name
+- the certificate must be within its validity period
+
+If verification fails, the client returns an error and does not write the HTTP
+request.
+
 After a successful handshake, the CLI prints a small TLS summary to stderr:
 
 ```text
@@ -81,7 +92,8 @@ go run ./cmd/htcl -insecure https://127.0.0.1:8443/
 ```
 
 This disables certificate verification and should be used only for local
-experiments.
+experiments. It means the client still encrypts the connection, but it no
+longer verifies that the peer is really the requested server.
 
 ## What Is Still Missing
 
@@ -90,6 +102,5 @@ create a tunnel through the proxy before starting the TLS handshake.
 
 More detailed TLS topics are still future steps:
 
-- certificate verification behavior
 - Server Name Indication details
 - ALPN and HTTP/2 negotiation
