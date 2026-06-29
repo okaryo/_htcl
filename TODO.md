@@ -186,7 +186,7 @@ Questions to answer:
 - [x] Save response bodies to files.
 - [x] Report download progress.
 - [x] Stream request bodies.
-- [ ] Handle cancellation during streaming.
+- [x] Handle cancellation during streaming.
 - [ ] Study backpressure between network reads and file writes.
 
 Questions to answer:
@@ -387,3 +387,6 @@ changes.
 - Added fixed-length request body streaming. Requests can now copy body bytes
   from an `io.Reader` with a known `Content-Length`, while request-side chunked
   transfer and CLI file uploads remain later steps.
+- Added streaming cancellation cleanup. The active connection is still closed
+  on context cancellation, and closable request body readers are now closed too
+  so blocked streaming uploads can return promptly.

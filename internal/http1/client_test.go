@@ -755,6 +755,51 @@ func TestClientDoReusableContextClosesConnectionOnCancellation(t *testing.T) {
 	}
 }
 
+func TestClientDoContextClosesStreamingRequestBodyOnCancellation(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	closed := make(chan bool, 1)
+	go serveRequestThenWaitForClientClose(t, listener, closed)
+
+	bodyReader, bodyWriter := io.Pipe()
+	defer bodyWriter.Close()
+
+	request, err := NewStreamingRequest("POST", "/upload", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, bodyReader, 10)
+	if err != nil {
+		t.Fatalf("NewStreamingRequest: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	client := Client{Timeout: 2 * time.Second}
+	_, err = client.DoContext(ctx, listener.Addr().String(), request)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline error, got %v", err)
+	}
+
+	if _, err := bodyWriter.Write([]byte("hello")); err == nil {
+		t.Fatal("expected body writer to fail after request body reader was closed")
+	}
+	select {
+	case ok := <-closed:
+		if !ok {
+			t.Fatal("server did not observe client connection close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for client connection close")
+	}
+}
+
 func TestClientCloseIdleConnectionsReleasesIdleConnection(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

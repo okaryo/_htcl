@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"time"
 )
@@ -302,7 +303,7 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 		return nil, fmt.Errorf("serialize HTTP request: %w", err)
 	}
 
-	stopCancelWatch := closeConnOnCancel(ctx, c.conn)
+	stopCancelWatch := closeOnCancel(ctx, c.cancelClosers(request)...)
 	defer stopCancelWatch()
 
 	if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
@@ -330,12 +331,26 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 	return response, nil
 }
 
-func closeConnOnCancel(ctx context.Context, conn net.Conn) func() {
+func (c *Connection) cancelClosers(request *Request) []io.Closer {
+	closers := []io.Closer{c.conn}
+	if request != nil {
+		if closer, ok := request.BodyReader.(io.Closer); ok {
+			closers = append(closers, closer)
+		}
+	}
+	return closers
+}
+
+func closeOnCancel(ctx context.Context, closers ...io.Closer) func() {
 	done := make(chan struct{})
 	go func() {
 		select {
 		case <-ctx.Done():
-			conn.Close()
+			for _, closer := range closers {
+				if closer != nil {
+					closer.Close()
+				}
+			}
 		case <-done:
 		}
 	}()

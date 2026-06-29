@@ -64,6 +64,23 @@ The serializer writes the request line and headers first, then copies exactly
 This matters for uploads because the body source might be a file, pipe, or other
 reader that should not be loaded entirely into memory before the request starts.
 
+## Cancellation During Streaming
+
+Streaming can block in more than one place:
+
+- writing to the network connection
+- reading from a request body reader
+- reading a response body from the network
+
+The client already closes the active connection when the request context is
+canceled. For streaming request bodies, it now also closes the body reader when
+that reader implements `io.Closer`. This lets sources such as `io.PipeReader`
+unblock when cancellation happens.
+
+Not every `io.Reader` can be forcefully interrupted. Readers that do not
+implement `io.Closer` need to observe cancellation themselves or eventually
+return from `Read`.
+
 ## Current Limitations
 
 This is only the first streaming building block:
