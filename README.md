@@ -123,6 +123,12 @@ Send a direct HTTPS request:
 go run ./cmd/htcl https://example.test/hello
 ```
 
+Save the response body to a file:
+
+```sh
+go run ./cmd/htcl -save body.bin -output status http://127.0.0.1:8080/download
+```
+
 The command opens a TCP connection, wraps it with TLS for `https://` URLs,
 writes a manual HTTP/1.1 request, parses the response status line, headers, and
 fixed-length body, then prints the parsed response.

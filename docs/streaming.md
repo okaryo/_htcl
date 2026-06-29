@@ -37,8 +37,20 @@ This is only the first streaming building block:
 - `ReadResponse` still buffers the final decoded body into memory.
 - Chunked transfer streaming is not separated yet.
 - Gzip decoding still produces a full decoded `[]byte`.
-- The CLI does not yet stream directly to a file.
+- The CLI can save the parsed response body with `-save`, but it does not yet
+  stream directly from the network connection to the file.
 
 Those are later steps. The important boundary introduced here is that body
 framing can be copied to an `io.Writer` without requiring a full in-memory
 buffer.
+
+## Current File Output
+
+The CLI can save the response body:
+
+```sh
+go run ./cmd/htcl -save body.bin -output status http://127.0.0.1:8080/file
+```
+
+`-save` writes only the response body to the file. `-output` still controls what
+is printed to stdout.

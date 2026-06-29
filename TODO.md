@@ -183,7 +183,7 @@ Questions to answer:
 ### 9. Streaming And Large Bodies
 
 - [x] Stream response bodies without loading all bytes into memory.
-- [ ] Save response bodies to files.
+- [x] Save response bodies to files.
 - [ ] Report download progress.
 - [ ] Stream request bodies.
 - [ ] Handle cancellation during streaming.
@@ -378,3 +378,6 @@ changes.
 - Added `StreamFixedBody` as the first response-body streaming building block.
   Fixed-length bodies can now be copied to an `io.Writer` without requiring a
   full in-memory body buffer, although `ReadResponse` still returns `[]byte`.
+- Added CLI file output with `-save`. The command can write the parsed response
+  body to a file while `-output` controls stdout; direct network-to-file
+  streaming remains a later refinement.

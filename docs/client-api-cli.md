@@ -46,6 +46,7 @@ Supported CLI options currently include:
 - `-proxy`: HTTP proxy URL for URL-based requests.
 - `-retries`: maximum retry attempts for idempotent URL-based requests.
 - `-insecure`: skip TLS certificate verification for local HTTPS experiments.
+- `-save`: save the response body to a file path.
 - `-url`: URL to request. A positional URL is also accepted.
 - `-addr`: TCP address for lower-level observation.
 - `-host`: HTTP `Host` header for lower-level observation.
@@ -75,6 +76,10 @@ When the URL uses `https://`, the CLI connects with TLS before writing the same
 HTTP/1.1 request. Certificate verification uses Go's standard TLS behavior
 unless `-insecure` is set. Successful HTTPS requests also print a small TLS
 summary to stderr, including the negotiated version and cipher suite.
+
+When `-save` is set, the CLI writes the response body to the given file path.
+The normal stdout formatting still follows `-output`, so `-save body.bin
+-output status` saves the body while printing only the status line.
 
 Output modes are handled only by the CLI. The client package still returns a
 parsed `Response`; the command chooses which parts to print.

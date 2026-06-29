@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -686,6 +688,38 @@ func TestRunOutputBodyOnly(t *testing.T) {
 
 	if got := stdout.String(); got != "hello" {
 		t.Fatalf("body output mismatch: %q", got)
+	}
+}
+
+func TestRunSavesResponseBodyToFile(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveOnce(t, listener, requests)
+
+	outputPath := filepath.Join(t.TempDir(), "body.txt")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawURL := "http://" + listener.Addr().String() + "/hello"
+	err = run([]string{"-save", outputPath, "-output", "status", "-timeout", "2s", rawURL}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	<-requests
+
+	if got := stdout.String(); got != "HTTP/1.1 200 OK\r\n" {
+		t.Fatalf("status output mismatch: %q", got)
+	}
+	saved, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got := string(saved); got != "hello" {
+		t.Fatalf("saved body = %q", got)
 	}
 }
 

@@ -40,6 +40,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	retries := flags.Int("retries", 0, "maximum retry attempts for idempotent requests")
 	insecureTLS := flags.Bool("insecure", false, "skip TLS certificate verification")
 	output := flags.String("output", "response", "response output mode: response, body, headers, or status")
+	save := flags.String("save", "", "save response body to the given file path")
 	timeout := flags.Duration("timeout", 30*time.Second, "deadline used for dial, write, and read")
 	var headers headerFlags
 	flags.Var(&headers, "header", "HTTP request header in 'Name: value' form; can be repeated")
@@ -71,7 +72,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		*rawURL = flags.Arg(0)
 	}
 	if *rawURL != "" {
-		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *retries, *insecureTLS, *output, *timeout, stdout, stderr)
+		return getURL(*rawURL, *method, headers, []byte(*body), *follow, *maxRedirects, *proxyRawURL, *retries, *insecureTLS, *output, *save, *timeout, stdout, stderr)
 	}
 
 	if *host == "" {
@@ -83,10 +84,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	return getHTTP(*address, request, *output, *timeout, stdout, stderr)
+	return getHTTP(*address, request, *output, *save, *timeout, stdout, stderr)
 }
 
-func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, retries int, insecureTLS bool, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, follow bool, maxRedirects int, proxyRawURL string, retries int, insecureTLS bool, output, savePath string, timeout time.Duration, stdout, stderr io.Writer) error {
 	u, err := http1.ParseURL(rawURL)
 	if err != nil {
 		return err
@@ -111,7 +112,7 @@ func getURL(rawURL, method string, headers []http1.HeaderField, body []byte, fol
 		}
 	}
 
-	return writeResponse(stdout, response, output)
+	return writeResult(stdout, response, output, savePath)
 }
 
 func parseProxyURL(rawURL string) (*url.URL, error) {
@@ -224,13 +225,13 @@ func requestTargetForURL(u *url.URL, proxy *url.URL) (string, error) {
 	return http1.AbsoluteRequestTargetForURL(u)
 }
 
-func getHTTP(address string, request *http1.Request, output string, timeout time.Duration, stdout, stderr io.Writer) error {
+func getHTTP(address string, request *http1.Request, output, savePath string, timeout time.Duration, stdout, stderr io.Writer) error {
 	response, err := doHTTP(address, request, timeout, stderr)
 	if err != nil {
 		return err
 	}
 
-	return writeResponse(stdout, response, output)
+	return writeResult(stdout, response, output, savePath)
 }
 
 func doHTTP(address string, request *http1.Request, timeout time.Duration, stderr io.Writer) (*http1.Response, error) {
@@ -386,6 +387,15 @@ func validateOutputMode(output string) error {
 	default:
 		return fmt.Errorf("unsupported output mode %q", output)
 	}
+}
+
+func writeResult(w io.Writer, response *http1.Response, output, savePath string) error {
+	if savePath != "" {
+		if err := os.WriteFile(savePath, response.Body, 0o666); err != nil {
+			return fmt.Errorf("save response body: %w", err)
+		}
+	}
+	return writeResponse(w, response, output)
 }
 
 func writeResponse(w io.Writer, response *http1.Response, output string) error {
