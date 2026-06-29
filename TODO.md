@@ -182,7 +182,7 @@ Questions to answer:
 
 ### 9. Streaming And Large Bodies
 
-- [ ] Stream response bodies without loading all bytes into memory.
+- [x] Stream response bodies without loading all bytes into memory.
 - [ ] Save response bodies to files.
 - [ ] Report download progress.
 - [ ] Stream request bodies.
@@ -375,3 +375,6 @@ changes.
 - Compared plain HTTP and direct HTTPS behavior. The request shape remains the
   same at the HTTP/1.1 layer; HTTPS changes the underlying connection by adding
   TLS handshake, encryption, integrity checks, and certificate verification.
+- Added `StreamFixedBody` as the first response-body streaming building block.
+  Fixed-length bodies can now be copied to an `io.Writer` without requiring a
+  full in-memory body buffer, although `ReadResponse` still returns `[]byte`.

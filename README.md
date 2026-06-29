@@ -162,3 +162,5 @@ later learning steps.
 - `docs/proxy.md`: notes on plain HTTP proxy requests.
 - `docs/retries.md`: notes on retry behavior and idempotency.
 - `docs/tls-https.md`: notes on direct HTTPS connections.
+- `docs/streaming.md`: notes on streaming response bodies and large body
+  handling.

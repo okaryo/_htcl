@@ -199,11 +199,30 @@ func ReadFixedBody(r io.Reader, length int64) ([]byte, error) {
 		return nil, fmt.Errorf("Content-Length is too large for this platform")
 	}
 
-	body := make([]byte, int(length))
-	if _, err := io.ReadFull(r, body); err != nil {
+	var body bytes.Buffer
+	body.Grow(int(length))
+	if _, err := StreamFixedBody(&body, r, length); err != nil {
 		return nil, fmt.Errorf("read fixed response body: %w", err)
 	}
-	return body, nil
+	return body.Bytes(), nil
+}
+
+func StreamFixedBody(w io.Writer, r io.Reader, length int64) (int64, error) {
+	if length < 0 {
+		return 0, fmt.Errorf("Content-Length must be zero or greater")
+	}
+	if length == 0 {
+		return 0, nil
+	}
+
+	written, err := io.CopyN(w, r, length)
+	if err != nil {
+		if errors.Is(err, io.EOF) && written < length {
+			err = io.ErrUnexpectedEOF
+		}
+		return written, fmt.Errorf("stream fixed response body: %w", err)
+	}
+	return written, nil
 }
 
 func ReadChunkedBody(r *LineReader) ([]byte, error) {

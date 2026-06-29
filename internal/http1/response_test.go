@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -231,6 +232,57 @@ func TestReadResponseRejectsMalformedChunkTerminator(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !strings.Contains(err.Error(), "chunk data must end with CRLF") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStreamFixedBodyCopiesOnlyContentLength(t *testing.T) {
+	input := strings.NewReader("helloextra")
+	var out bytes.Buffer
+
+	written, err := StreamFixedBody(&out, input, 5)
+	if err != nil {
+		t.Fatalf("StreamFixedBody: %v", err)
+	}
+	if written != 5 {
+		t.Fatalf("written = %d, want 5", written)
+	}
+	if got := out.String(); got != "hello" {
+		t.Fatalf("body = %q", got)
+	}
+	remaining, err := io.ReadAll(input)
+	if err != nil {
+		t.Fatalf("ReadAll remaining: %v", err)
+	}
+	if got := string(remaining); got != "extra" {
+		t.Fatalf("remaining = %q", got)
+	}
+}
+
+func TestStreamFixedBodyHandlesPartialReads(t *testing.T) {
+	var out bytes.Buffer
+	written, err := StreamFixedBody(&out, iotest.OneByteReader(strings.NewReader("hello")), 5)
+	if err != nil {
+		t.Fatalf("StreamFixedBody: %v", err)
+	}
+	if written != 5 {
+		t.Fatalf("written = %d, want 5", written)
+	}
+	if got := out.String(); got != "hello" {
+		t.Fatalf("body = %q", got)
+	}
+}
+
+func TestStreamFixedBodyRejectsIncompleteBody(t *testing.T) {
+	var out bytes.Buffer
+	written, err := StreamFixedBody(&out, strings.NewReader("he"), 5)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if written != 2 {
+		t.Fatalf("written = %d, want 2", written)
+	}
+	if !strings.Contains(err.Error(), "unexpected EOF") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
