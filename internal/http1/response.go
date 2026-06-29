@@ -26,6 +26,13 @@ type Response struct {
 	Body         []byte
 }
 
+type Progress struct {
+	Written int64
+	Total   int64
+}
+
+type ProgressFunc func(Progress)
+
 type LineReader struct {
 	reader    *bufio.Reader
 	maxLength int
@@ -208,14 +215,25 @@ func ReadFixedBody(r io.Reader, length int64) ([]byte, error) {
 }
 
 func StreamFixedBody(w io.Writer, r io.Reader, length int64) (int64, error) {
+	return StreamFixedBodyWithProgress(w, r, length, nil)
+}
+
+func StreamFixedBodyWithProgress(w io.Writer, r io.Reader, length int64, report ProgressFunc) (int64, error) {
 	if length < 0 {
 		return 0, fmt.Errorf("Content-Length must be zero or greater")
 	}
 	if length == 0 {
+		if report != nil {
+			report(Progress{Total: 0})
+		}
 		return 0, nil
 	}
 
-	written, err := io.CopyN(w, r, length)
+	written, err := io.CopyN(&progressWriter{
+		writer: w,
+		total:  length,
+		report: report,
+	}, r, length)
 	if err != nil {
 		if errors.Is(err, io.EOF) && written < length {
 			err = io.ErrUnexpectedEOF
@@ -223,6 +241,27 @@ func StreamFixedBody(w io.Writer, r io.Reader, length int64) (int64, error) {
 		return written, fmt.Errorf("stream fixed response body: %w", err)
 	}
 	return written, nil
+}
+
+type progressWriter struct {
+	writer  io.Writer
+	written int64
+	total   int64
+	report  ProgressFunc
+}
+
+func (w *progressWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	if n > 0 {
+		w.written += int64(n)
+		if w.report != nil {
+			w.report(Progress{
+				Written: w.written,
+				Total:   w.total,
+			})
+		}
+	}
+	return n, err
 }
 
 func ReadChunkedBody(r *LineReader) ([]byte, error) {

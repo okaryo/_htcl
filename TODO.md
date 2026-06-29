@@ -184,7 +184,7 @@ Questions to answer:
 
 - [x] Stream response bodies without loading all bytes into memory.
 - [x] Save response bodies to files.
-- [ ] Report download progress.
+- [x] Report download progress.
 - [ ] Stream request bodies.
 - [ ] Handle cancellation during streaming.
 - [ ] Study backpressure between network reads and file writes.
@@ -381,3 +381,6 @@ changes.
 - Added CLI file output with `-save`. The command can write the parsed response
   body to a file while `-output` controls stdout; direct network-to-file
   streaming remains a later refinement.
+- Added fixed-length body progress reporting. `StreamFixedBodyWithProgress`
+  reports bytes successfully written against the known `Content-Length`,
+  providing a low-level hook for future CLI download progress.

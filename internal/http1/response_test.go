@@ -287,6 +287,50 @@ func TestStreamFixedBodyRejectsIncompleteBody(t *testing.T) {
 	}
 }
 
+func TestStreamFixedBodyWithProgressReportsCopiedBytes(t *testing.T) {
+	var out bytes.Buffer
+	var progress []Progress
+
+	written, err := StreamFixedBodyWithProgress(&out, iotest.OneByteReader(strings.NewReader("hello")), 5, func(next Progress) {
+		progress = append(progress, next)
+	})
+	if err != nil {
+		t.Fatalf("StreamFixedBodyWithProgress: %v", err)
+	}
+	if written != 5 {
+		t.Fatalf("written = %d, want 5", written)
+	}
+	want := []Progress{
+		{Written: 1, Total: 5},
+		{Written: 2, Total: 5},
+		{Written: 3, Total: 5},
+		{Written: 4, Total: 5},
+		{Written: 5, Total: 5},
+	}
+	if fmt.Sprint(progress) != fmt.Sprint(want) {
+		t.Fatalf("progress = %+v, want %+v", progress, want)
+	}
+}
+
+func TestStreamFixedBodyWithProgressReportsZeroLengthBody(t *testing.T) {
+	var out bytes.Buffer
+	var progress []Progress
+
+	written, err := StreamFixedBodyWithProgress(&out, strings.NewReader("extra"), 0, func(next Progress) {
+		progress = append(progress, next)
+	})
+	if err != nil {
+		t.Fatalf("StreamFixedBodyWithProgress: %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("written = %d, want 0", written)
+	}
+	want := []Progress{{Written: 0, Total: 0}}
+	if fmt.Sprint(progress) != fmt.Sprint(want) {
+		t.Fatalf("progress = %+v, want %+v", progress, want)
+	}
+}
+
 func gzipBytes(t *testing.T, value string) []byte {
 	t.Helper()
 

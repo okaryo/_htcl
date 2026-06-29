@@ -30,6 +30,25 @@ The helper copies exactly `Content-Length` bytes. It does not read beyond the
 declared body, which matters when a keep-alive connection may contain the next
 response after the current body.
 
+## Progress Reporting
+
+For fixed-length bodies, progress can be reported because the total size is
+known from `Content-Length`:
+
+```go
+written, err := StreamFixedBodyWithProgress(dst, conn, length, func(p Progress) {
+    fmt.Printf("%d/%d\n", p.Written, p.Total)
+})
+```
+
+The progress callback reports bytes that were successfully written to the
+destination. This makes it suitable for file downloads, hashes, or other
+streaming destinations.
+
+This is still a low-level building block. The CLI does not yet render a progress
+bar; it can use this hook once response bodies are streamed directly from the
+network connection to the output file.
+
 ## Current Limitations
 
 This is only the first streaming building block:
@@ -39,6 +58,7 @@ This is only the first streaming building block:
 - Gzip decoding still produces a full decoded `[]byte`.
 - The CLI can save the parsed response body with `-save`, but it does not yet
   stream directly from the network connection to the file.
+- CLI progress output is not implemented yet.
 
 Those are later steps. The important boundary introduced here is that body
 framing can be copied to an `io.Writer` without requiring a full in-memory
