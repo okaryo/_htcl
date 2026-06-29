@@ -2,9 +2,11 @@ package http1
 
 import (
 	"bytes"
+	"io"
 	"net/url"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestWriteRequestSerializesRequestLineHeadersAndBody(t *testing.T) {
@@ -60,6 +62,67 @@ func TestNewRequestForURLSetsHostAndTarget(t *testing.T) {
 	}
 }
 
+func TestWriteRequestStreamsRequestBody(t *testing.T) {
+	request, err := NewStreamingRequest("POST", "/upload", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, iotest.OneByteReader(strings.NewReader("hello")), 5)
+	if err != nil {
+		t.Fatalf("NewStreamingRequest: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := WriteRequest(&out, request); err != nil {
+		t.Fatalf("WriteRequest: %v", err)
+	}
+
+	want := "" +
+		"POST /upload HTTP/1.1\r\n" +
+		"Host: example.test\r\n" +
+		"Content-Length: 5\r\n" +
+		"\r\n" +
+		"hello"
+	if got := out.String(); got != want {
+		t.Fatalf("request mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestStreamRequestBodyCopiesOnlyDeclaredLength(t *testing.T) {
+	input := strings.NewReader("helloextra")
+	var out bytes.Buffer
+
+	written, err := StreamRequestBody(&out, input, 5)
+	if err != nil {
+		t.Fatalf("StreamRequestBody: %v", err)
+	}
+	if written != 5 {
+		t.Fatalf("written = %d, want 5", written)
+	}
+	if got := out.String(); got != "hello" {
+		t.Fatalf("body = %q", got)
+	}
+	remaining, err := io.ReadAll(input)
+	if err != nil {
+		t.Fatalf("ReadAll remaining: %v", err)
+	}
+	if got := string(remaining); got != "extra" {
+		t.Fatalf("remaining = %q", got)
+	}
+}
+
+func TestStreamRequestBodyRejectsIncompleteBody(t *testing.T) {
+	var out bytes.Buffer
+	written, err := StreamRequestBody(&out, strings.NewReader("he"), 5)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if written != 2 {
+		t.Fatalf("written = %d, want 2", written)
+	}
+	if !strings.Contains(err.Error(), "unexpected EOF") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestWriteRequestAcceptsAbsoluteFormTarget(t *testing.T) {
 	request, err := NewRequest("GET", "http://example.test/search?q=hello", []HeaderField{
 		{Name: "Host", Value: "example.test"},
@@ -108,6 +171,31 @@ func TestNewRequestRejectsContentLengthMismatch(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !strings.Contains(err.Error(), "does not match body length") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewStreamingRequestRejectsContentLengthMismatch(t *testing.T) {
+	_, err := NewStreamingRequest("POST", "/", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+		{Name: "Content-Length", Value: "10"},
+	}, strings.NewReader("hello"), 5)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "does not match body length") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewStreamingRequestRejectsMissingBodyReader(t *testing.T) {
+	_, err := NewStreamingRequest("POST", "/", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, nil, 5)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "request body reader is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

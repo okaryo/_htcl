@@ -49,6 +49,21 @@ This is still a low-level building block. The CLI does not yet render a progress
 bar; it can use this hook once response bodies are streamed directly from the
 network connection to the output file.
 
+## Request Body Streaming
+
+Request bodies can also be streamed when their length is known:
+
+```go
+request, err := NewStreamingRequest("POST", "/upload", fields, bodyReader, bodyLength)
+```
+
+The serializer writes the request line and headers first, then copies exactly
+`bodyLength` bytes from the reader to the connection. The request still uses
+`Content-Length`; request-side chunked transfer is not implemented yet.
+
+This matters for uploads because the body source might be a file, pipe, or other
+reader that should not be loaded entirely into memory before the request starts.
+
 ## Current Limitations
 
 This is only the first streaming building block:
@@ -59,6 +74,8 @@ This is only the first streaming building block:
 - The CLI can save the parsed response body with `-save`, but it does not yet
   stream directly from the network connection to the file.
 - CLI progress output is not implemented yet.
+- The CLI does not yet stream request bodies from files.
+- Request-side chunked transfer is not implemented yet.
 
 Those are later steps. The important boundary introduced here is that body
 framing can be copied to an `io.Writer` without requiring a full in-memory

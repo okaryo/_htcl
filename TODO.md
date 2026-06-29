@@ -185,7 +185,7 @@ Questions to answer:
 - [x] Stream response bodies without loading all bytes into memory.
 - [x] Save response bodies to files.
 - [x] Report download progress.
-- [ ] Stream request bodies.
+- [x] Stream request bodies.
 - [ ] Handle cancellation during streaming.
 - [ ] Study backpressure between network reads and file writes.
 
@@ -384,3 +384,6 @@ changes.
 - Added fixed-length body progress reporting. `StreamFixedBodyWithProgress`
   reports bytes successfully written against the known `Content-Length`,
   providing a low-level hook for future CLI download progress.
+- Added fixed-length request body streaming. Requests can now copy body bytes
+  from an `io.Reader` with a known `Content-Length`, while request-side chunked
+  transfer and CLI file uploads remain later steps.

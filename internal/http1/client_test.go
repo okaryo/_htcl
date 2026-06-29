@@ -16,8 +16,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -61,6 +63,44 @@ func TestClientDoSendsRequestReadsResponseAndClosesConnection(t *testing.T) {
 	}
 	if !<-closed {
 		t.Fatal("client did not close the connection")
+	}
+}
+
+func TestClientDoStreamsRequestBodyFromReader(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	go serveClientRequestWithBody(t, listener, requests)
+
+	request, err := NewStreamingRequest("POST", "/upload", []HeaderField{
+		{Name: "Host", Value: "example.test"},
+	}, iotest.OneByteReader(strings.NewReader("hello")), 5)
+	if err != nil {
+		t.Fatalf("NewStreamingRequest: %v", err)
+	}
+
+	client := Client{Timeout: 2 * time.Second}
+	response, err := client.Do(listener.Addr().String(), request)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+
+	gotRequest := <-requests
+	if !strings.HasPrefix(gotRequest, "POST /upload HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", gotRequest)
+	}
+	if !strings.Contains(gotRequest, "Content-Length: 5\r\n") {
+		t.Fatalf("missing Content-Length:\n%s", gotRequest)
+	}
+	if !strings.HasSuffix(gotRequest, "\r\n\r\nhello") {
+		t.Fatalf("request body mismatch:\n%s", gotRequest)
 	}
 }
 
@@ -790,6 +830,58 @@ func serveClientOnce(t *testing.T, listener net.Listener, requests chan<- string
 
 	_, err = reader.ReadByte()
 	closed <- err == io.EOF
+}
+
+func serveClientRequestWithBody(t *testing.T, listener net.Listener, requests chan<- string) {
+	t.Helper()
+
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Errorf("accept: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Errorf("set deadline: %v", err)
+		return
+	}
+
+	reader := bufio.NewReader(conn)
+	var request strings.Builder
+	var contentLength int
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Errorf("read request line: %v", err)
+			return
+		}
+		request.WriteString(line)
+		if name, value, ok := strings.Cut(strings.TrimRight(line, "\r\n"), ":"); ok && strings.EqualFold(name, "Content-Length") {
+			contentLength, err = strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				t.Errorf("parse Content-Length: %v", err)
+				return
+			}
+		}
+		if line == "\r\n" {
+			break
+		}
+	}
+	if contentLength > 0 {
+		body := make([]byte, contentLength)
+		if _, err := io.ReadFull(reader, body); err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		request.Write(body)
+	}
+	requests <- request.String()
+
+	response := "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+	if _, err := io.WriteString(conn, response); err != nil {
+		t.Errorf("write response: %v", err)
+	}
 }
 
 func serveTwoRequestsOnOneConnection(t *testing.T, listener net.Listener, requests chan<- string) {

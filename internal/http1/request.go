@@ -1,6 +1,7 @@
 package http1
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -14,6 +15,8 @@ type Request struct {
 	Version      string
 	HeaderFields []HeaderField
 	Body         []byte
+	BodyReader   io.Reader
+	BodyLength   int64
 }
 
 func NewRequest(method, target string, fields []HeaderField, body []byte) (*Request, error) {
@@ -23,6 +26,24 @@ func NewRequest(method, target string, fields []HeaderField, body []byte) (*Requ
 		Version:      "HTTP/1.1",
 		HeaderFields: append([]HeaderField(nil), fields...),
 		Body:         append([]byte(nil), body...),
+	}
+	if err := request.prepare(); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func NewStreamingRequest(method, target string, fields []HeaderField, body io.Reader, bodyLength int64) (*Request, error) {
+	if body == nil && bodyLength > 0 {
+		return nil, fmt.Errorf("request body reader is required")
+	}
+	request := &Request{
+		Method:       method,
+		Target:       target,
+		Version:      "HTTP/1.1",
+		HeaderFields: append([]HeaderField(nil), fields...),
+		BodyReader:   body,
+		BodyLength:   bodyLength,
 	}
 	if err := request.prepare(); err != nil {
 		return nil, err
@@ -64,7 +85,11 @@ func WriteRequest(w io.Writer, request *Request) error {
 	if _, err := fmt.Fprint(w, "\r\n"); err != nil {
 		return err
 	}
-	if len(request.Body) > 0 {
+	if request.BodyReader != nil {
+		if _, err := StreamRequestBody(w, request.BodyReader, request.BodyLength); err != nil {
+			return err
+		}
+	} else if len(request.Body) > 0 {
 		if _, err := w.Write(request.Body); err != nil {
 			return err
 		}
@@ -82,6 +107,8 @@ func (r *Request) Clone() *Request {
 		Version:      r.Version,
 		HeaderFields: append([]HeaderField(nil), r.HeaderFields...),
 		Body:         append([]byte(nil), r.Body...),
+		BodyReader:   r.BodyReader,
+		BodyLength:   r.BodyLength,
 	}
 }
 
@@ -150,7 +177,10 @@ func (r *Request) prepareContentLength() error {
 		return err
 	}
 
-	bodyLength := int64(len(r.Body))
+	bodyLength, err := r.requestBodyLength()
+	if err != nil {
+		return err
+	}
 	if ok {
 		if length != bodyLength {
 			return fmt.Errorf("Content-Length %d does not match body length %d", length, bodyLength)
@@ -166,6 +196,37 @@ func (r *Request) prepareContentLength() error {
 		Value: strconv.FormatInt(bodyLength, 10),
 	})
 	return nil
+}
+
+func (r *Request) requestBodyLength() (int64, error) {
+	if r.BodyReader != nil && len(r.Body) > 0 {
+		return 0, fmt.Errorf("request body cannot use both bytes and reader")
+	}
+	if r.BodyReader != nil {
+		if r.BodyLength < 0 {
+			return 0, fmt.Errorf("request body length must be zero or greater")
+		}
+		return r.BodyLength, nil
+	}
+	return int64(len(r.Body)), nil
+}
+
+func StreamRequestBody(w io.Writer, r io.Reader, length int64) (int64, error) {
+	if length < 0 {
+		return 0, fmt.Errorf("request body length must be zero or greater")
+	}
+	if length == 0 {
+		return 0, nil
+	}
+
+	written, err := io.CopyN(w, r, length)
+	if err != nil {
+		if errors.Is(err, io.EOF) && written < length {
+			err = io.ErrUnexpectedEOF
+		}
+		return written, fmt.Errorf("stream request body: %w", err)
+	}
+	return written, nil
 }
 
 func hasHeaderField(fields []HeaderField, name string) bool {

@@ -1,11 +1,9 @@
 package http1
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
 	"time"
 )
@@ -300,8 +298,7 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 		timeout = 30 * time.Second
 	}
 
-	var requestBytes bytes.Buffer
-	if err := WriteRequest(&requestBytes, request); err != nil {
+	if err := request.prepare(); err != nil {
 		return nil, fmt.Errorf("serialize HTTP request: %w", err)
 	}
 
@@ -311,7 +308,7 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 	if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, fmt.Errorf("set write deadline: %w", err)
 	}
-	if err := writeAll(c.conn, requestBytes.Bytes()); err != nil {
+	if err := WriteRequest(c.conn, request); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, fmt.Errorf("request canceled: %w", ctxErr)
 		}
@@ -355,18 +352,4 @@ func (c *Connection) Close() error {
 	err := c.conn.Close()
 	c.conn = nil
 	return err
-}
-
-func writeAll(w io.Writer, p []byte) error {
-	for len(p) > 0 {
-		n, err := w.Write(p)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-		p = p[n:]
-	}
-	return nil
 }
