@@ -72,7 +72,7 @@ func (c Client) DoContext(ctx context.Context, address string, request *Request)
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
+		return nil, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
 	}
 	defer conn.Close()
 
@@ -111,7 +111,7 @@ func (c Client) DoTLSContextWithInfo(ctx context.Context, address, serverName st
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, TLSInfo{}, fmt.Errorf("dial tcp %s: %w", address, err)
+		return nil, TLSInfo{}, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
 	}
 	defer conn.Close()
 
@@ -121,13 +121,13 @@ func (c Client) DoTLSContextWithInfo(ctx context.Context, address, serverName st
 	}
 	tlsConn := tls.Client(conn, config)
 	if err := tlsConn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, TLSInfo{}, fmt.Errorf("set tls deadline: %w", err)
+		return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("set tls deadline: %w", err))
 	}
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, TLSInfo{}, fmt.Errorf("tls handshake canceled: %w", ctxErr)
+			return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake canceled: %w", ctxErr))
 		}
-		return nil, TLSInfo{}, fmt.Errorf("tls handshake with %s: %w", serverName, err)
+		return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake with %s: %w", serverName, err))
 	}
 
 	info := TLSInfoFromConnectionState(tlsConn.ConnectionState())
@@ -273,7 +273,7 @@ func (c *Client) dialContext(ctx context.Context, address string) (*Connection, 
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, fmt.Errorf("dial tcp %s: %w", address, err)
+		return nil, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
 	}
 	return NewConnection(conn, timeout), nil
 }
@@ -300,31 +300,31 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 	}
 
 	if err := request.prepare(); err != nil {
-		return nil, fmt.Errorf("serialize HTTP request: %w", err)
+		return nil, classifyClientError(ErrorPhaseSerialize, fmt.Errorf("serialize HTTP request: %w", err))
 	}
 
 	stopCancelWatch := closeOnCancel(ctx, c.cancelClosers(request)...)
 	defer stopCancelWatch()
 
 	if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, fmt.Errorf("set write deadline: %w", err)
+		return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("set write deadline: %w", err))
 	}
 	if err := WriteRequest(c.conn, request); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("request canceled: %w", ctxErr)
+			return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("request canceled: %w", ctxErr))
 		}
-		return nil, fmt.Errorf("write HTTP request: %w", err)
+		return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("write HTTP request: %w", err))
 	}
 
 	if err := c.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, fmt.Errorf("set read deadline: %w", err)
+		return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("set read deadline: %w", err))
 	}
 	response, err := ReadResponse(c.conn)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("request canceled: %w", ctxErr)
+			return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("request canceled: %w", ctxErr))
 		}
-		return nil, fmt.Errorf("read HTTP response: %w", err)
+		return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("read HTTP response: %w", err))
 	}
 
 	c.reusable = !HasConnectionToken(request.HeaderFields, "close") && !response.ShouldCloseConnection()

@@ -52,9 +52,10 @@ go run ./cmd/htcl -retries 1 -method POST -body hello http://127.0.0.1:8080/subm
 
 ## Why Retries Are Hard
 
-The current implementation retries after request/response exchange errors, but
-it does not yet classify whether the failure happened before the request bytes
-were written, while writing them, or after the server already received them.
+The current implementation retries after request/response exchange errors. The
+client now classifies broad error kinds and phases, but retry decisions still do
+not use the full detail needed to determine whether bytes were written before
+the failure.
 
 That distinction matters:
 
@@ -64,8 +65,8 @@ That distinction matters:
 - If reading the response fails, the server may already have completed the
   request.
 
-Because this project has not implemented detailed error classification yet,
-retry behavior is intentionally opt-in and limited to idempotent methods.
+Because retry behavior is still coarse, it remains opt-in and limited to
+idempotent methods.
 
 ## Future Work
 

@@ -170,3 +170,4 @@ later learning steps.
 - `docs/tls-https.md`: notes on direct HTTPS connections.
 - `docs/streaming.md`: notes on streaming response bodies and large body
   handling.
+- `docs/robustness.md`: notes on error classification and robustness.

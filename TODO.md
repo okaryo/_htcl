@@ -197,7 +197,7 @@ Questions to answer:
 
 ### 10. Robustness And Observability
 
-- [ ] Classify network, timeout, protocol, and application errors.
+- [x] Classify network, timeout, protocol, and application errors.
 - [ ] Refine retry decisions with error phase classification and backoff.
 - [ ] Add structured debug logs.
 - [ ] Add simple timing measurements.
@@ -394,3 +394,7 @@ changes.
   that `StreamFixedBody` does not continue reading from the source while the
   destination write is blocked, keeping streaming bounded by the copy loop
   instead of an unbounded in-memory queue.
+- Added `ClientError` classification for broad failure kinds and phases:
+  network, timeout, protocol, and application. HTTP `4xx` and `5xx` responses
+  are still returned as valid responses by default, with `ResponseStatusError`
+  available when callers want to treat them as application errors.
