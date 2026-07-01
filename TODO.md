@@ -203,7 +203,7 @@ Questions to answer:
 - [x] Add simple timing measurements.
 - [x] Add small reproducible test servers.
 - [x] Run race detection where applicable.
-- [ ] Document known limitations.
+- [x] Document known limitations.
 
 Questions to answer:
 
@@ -414,3 +414,6 @@ changes.
 - Ran race detection with `go test -race ./...`. No data races were reported in
   the command package or `internal/http1`, including recent debug logging and
   test server goroutine paths.
+- Documented known limitations in `docs/known-limitations.md`, covering
+  protocol scope, buffering, streaming, connection reuse, redirects, cookies,
+  TLS/proxy support, retries, CLI output, observability, and RFC completeness.

@@ -111,7 +111,7 @@ Send a request through a plain HTTP proxy:
 go run ./cmd/htcl -proxy http://127.0.0.1:8080 http://example.test/hello
 ```
 
-Retry an idempotent request after a transport/protocol failure:
+Retry an idempotent request after a transport or timeout failure:
 
 ```sh
 go run ./cmd/htcl -retries 1 http://127.0.0.1:8080/unstable
@@ -129,9 +129,9 @@ Save the response body to a file:
 go run ./cmd/htcl -save body.bin -output status http://127.0.0.1:8080/download
 ```
 
-The command opens a TCP connection, wraps it with TLS for `https://` URLs,
-writes a manual HTTP/1.1 request, parses the response status line, headers, and
-fixed-length body, then prints the parsed response.
+The command opens a TCP connection, wraps it with TLS for direct `https://`
+URLs, writes a manual HTTP/1.1 request, parses the response status line,
+headers, and common body framing, then prints the parsed response.
 
 The default timeout is 30 seconds. To make blocking behavior easier to observe:
 
@@ -139,9 +139,10 @@ The default timeout is 30 seconds. To make blocking behavior easier to observe:
 go run ./cmd/htcl -timeout 5s http://127.0.0.1:8080/hello
 ```
 
-This first client sends `Connection: close`, but fixed-length response bodies
-are now read using `Content-Length`. Keep-alive reuse and chunked transfer are
-later learning steps.
+The one-shot client path sends `Connection: close`. The library also has a
+minimal keep-alive reuse path, chunked response decoding, gzip decompression,
+direct HTTPS, redirects, cookies, retries, and streaming building blocks. See
+`docs/known-limitations.md` for the current boundaries.
 
 ## Project Documents
 
@@ -171,3 +172,5 @@ later learning steps.
 - `docs/streaming.md`: notes on streaming response bodies and large body
   handling.
 - `docs/robustness.md`: notes on error classification and robustness.
+- `docs/known-limitations.md`: current intentional limitations and future
+  learning boundaries.
