@@ -81,6 +81,25 @@ Not every `io.Reader` can be forcefully interrupted. Readers that do not
 implement `io.Closer` need to observe cancellation themselves or eventually
 return from `Read`.
 
+## Backpressure
+
+`StreamFixedBody` uses a synchronous copy loop. It reads some bytes from the
+source, writes those bytes to the destination, and waits for the write to return
+before reading more.
+
+That means a slow destination naturally slows down the source:
+
+- if the destination is a file and disk writes block, network reads pause
+- if the destination is another network connection and its send buffer is full,
+  response body reads pause
+- the client does not need an extra queue just to avoid unbounded buffering
+
+This is the basic backpressure behavior provided by the `io.Reader` and
+`io.Writer` model. It is not zero buffering: the copy loop has a working buffer,
+and one chunk may already have been read before the write blocks. But it avoids
+reading the whole body into memory when the destination is slower than the
+source.
+
 ## Current Limitations
 
 This is only the first streaming building block:

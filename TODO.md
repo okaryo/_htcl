@@ -187,7 +187,7 @@ Questions to answer:
 - [x] Report download progress.
 - [x] Stream request bodies.
 - [x] Handle cancellation during streaming.
-- [ ] Study backpressure between network reads and file writes.
+- [x] Study backpressure between network reads and file writes.
 
 Questions to answer:
 
@@ -390,3 +390,7 @@ changes.
 - Added streaming cancellation cleanup. The active connection is still closed
   on context cancellation, and closable request body readers are now closed too
   so blocked streaming uploads can return promptly.
+- Studied response streaming backpressure. A blocking writer test now confirms
+  that `StreamFixedBody` does not continue reading from the source while the
+  destination write is blocked, keeping streaming bounded by the copy loop
+  instead of an unbounded in-memory queue.

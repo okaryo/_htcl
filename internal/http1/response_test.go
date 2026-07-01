@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
+	"time"
 )
 
 func TestReadResponseParsesStatusHeadersAndFixedBody(t *testing.T) {
@@ -331,6 +333,56 @@ func TestStreamFixedBodyWithProgressReportsZeroLengthBody(t *testing.T) {
 	}
 }
 
+func TestStreamFixedBodyBackpressureStopsReadingWhileWriterIsBlocked(t *testing.T) {
+	reader := &oneByteSignalReader{
+		data:  []byte("abc"),
+		reads: make(chan byte, 3),
+	}
+	releaseWriter := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			close(releaseWriter)
+		})
+	}
+	defer release()
+	writer := &blockingFirstWriteWriter{
+		started: make(chan struct{}, 1),
+		release: releaseWriter,
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := StreamFixedBody(writer, reader, 3)
+		done <- err
+	}()
+
+	if got := waitReadByte(t, reader.reads); got != 'a' {
+		t.Fatalf("first read = %q, want %q", got, 'a')
+	}
+	waitWriteStart(t, writer.started)
+
+	select {
+	case got := <-reader.reads:
+		t.Fatalf("read advanced while writer was blocked: %q", got)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	release()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("StreamFixedBody: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StreamFixedBody did not finish after writer was released")
+	}
+	if got := writer.String(); got != "abc" {
+		t.Fatalf("written body = %q, want %q", got, "abc")
+	}
+}
+
 func gzipBytes(t *testing.T, value string) []byte {
 	t.Helper()
 
@@ -343,4 +395,69 @@ func gzipBytes(t *testing.T, value string) []byte {
 		t.Fatalf("gzip close: %v", err)
 	}
 	return compressed.Bytes()
+}
+
+type oneByteSignalReader struct {
+	data  []byte
+	reads chan byte
+}
+
+func (r *oneByteSignalReader) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, io.EOF
+	}
+	p[0] = r.data[0]
+	r.reads <- r.data[0]
+	r.data = r.data[1:]
+	return 1, nil
+}
+
+type blockingFirstWriteWriter struct {
+	mu      sync.Mutex
+	body    bytes.Buffer
+	started chan struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (w *blockingFirstWriteWriter) Write(p []byte) (int, error) {
+	select {
+	case w.started <- struct{}{}:
+	default:
+	}
+	w.once.Do(func() {
+		<-w.release
+	})
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.body.Write(p)
+}
+
+func (w *blockingFirstWriteWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.body.String()
+}
+
+func waitReadByte(t *testing.T, ch <-chan byte) byte {
+	t.Helper()
+
+	select {
+	case got := <-ch:
+		return got
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for reader")
+	}
+	return 0
+}
+
+func waitWriteStart(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for writer")
+	}
 }
