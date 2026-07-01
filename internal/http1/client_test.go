@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -63,6 +64,66 @@ func TestClientDoSendsRequestReadsResponseAndClosesConnection(t *testing.T) {
 	}
 	if !<-closed {
 		t.Fatal("client did not close the connection")
+	}
+}
+
+func TestClientDebugLogRecordsRoundTripEvents(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	requests := make(chan string, 1)
+	closed := make(chan bool, 1)
+	go serveClientOnce(t, listener, requests, closed)
+
+	request := newTestRequest(t, "/debug")
+	var events []DebugEvent
+	client := Client{
+		Timeout: 2 * time.Second,
+		DebugLog: func(event DebugEvent) {
+			events = append(events, event)
+		},
+	}
+
+	response, err := client.Do(listener.Addr().String(), request)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+
+	wantNames := []DebugEventName{
+		DebugEventDialStart,
+		DebugEventDialDone,
+		DebugEventWriteRequestStart,
+		DebugEventWriteRequestDone,
+		DebugEventReadResponseStart,
+		DebugEventReadResponseDone,
+	}
+	if got := debugEventNames(events); fmt.Sprint(got) != fmt.Sprint(wantNames) {
+		t.Fatalf("debug events = %v, want %v", got, wantNames)
+	}
+
+	for _, event := range events {
+		if event.Address != listener.Addr().String() {
+			t.Fatalf("event %s address = %q, want %q", event.Name, event.Address, listener.Addr().String())
+		}
+		if event.Time.IsZero() {
+			t.Fatalf("event %s has zero time", event.Name)
+		}
+	}
+	if events[2].Method != "GET" || events[2].Target != "/debug" {
+		t.Fatalf("write event method/target = %s %s", events[2].Method, events[2].Target)
+	}
+	last := events[len(events)-1]
+	if last.StatusCode != 200 {
+		t.Fatalf("last status code = %d, want 200", last.StatusCode)
+	}
+	if last.Err != nil {
+		t.Fatalf("last error = %v", last.Err)
 	}
 }
 
@@ -1121,6 +1182,14 @@ func newTestRequest(t *testing.T, target string) *Request {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	return request
+}
+
+func debugEventNames(events []DebugEvent) []DebugEventName {
+	names := make([]DebugEventName, 0, len(events))
+	for _, event := range events {
+		names = append(names, event.Name)
+	}
+	return names
 }
 
 func newTestCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {

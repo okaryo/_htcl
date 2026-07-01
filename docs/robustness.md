@@ -51,6 +51,36 @@ err := http1.ResponseStatusError(response)
 
 That returns an `application` `ClientError` for status codes `400` and above.
 
+## Structured Debug Events
+
+`Client` can emit structured debug events through `DebugLog`:
+
+```go
+client := http1.Client{
+    DebugLog: func(event http1.DebugEvent) {
+        fmt.Printf("%s %s %s\n", event.Name, event.Phase, event.Address)
+    },
+}
+```
+
+The hook receives events such as:
+
+- `dial_start`
+- `dial_done`
+- `tls_handshake_start`
+- `tls_handshake_done`
+- `write_request_start`
+- `write_request_done`
+- `read_response_start`
+- `read_response_done`
+- `connection_reused`
+- `connection_idle`
+
+Each event can carry phase, address, method, target, status code, reusability,
+timestamp, and error information. The library does not decide whether these
+events should be printed as text, JSON, test assertions, or trace spans. That
+choice belongs to the caller.
+
 ## Current Limits
 
 This classification is intentionally small. It does not yet decide whether an

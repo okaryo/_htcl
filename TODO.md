@@ -199,7 +199,7 @@ Questions to answer:
 
 - [x] Classify network, timeout, protocol, and application errors.
 - [x] Refine retry decisions with error phase classification and backoff.
-- [ ] Add structured debug logs.
+- [x] Add structured debug logs.
 - [ ] Add simple timing measurements.
 - [ ] Add small reproducible test servers.
 - [ ] Run race detection where applicable.
@@ -401,3 +401,7 @@ changes.
 - Refined retry decisions to use error classification. Retries now require an
   idempotent method and a `network` or `timeout` client error, and the CLI waits
   with capped exponential backoff before retrying.
+- Added structured debug events through `Client.DebugLog`. The client can now
+  report phase-oriented events such as dial, TLS handshake, request write,
+  response read, idle storage, and connection reuse without forcing a specific
+  output format.

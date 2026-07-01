@@ -13,6 +13,7 @@ type Client struct {
 	Timeout     time.Duration
 	IdleTimeout time.Duration
 	TLSConfig   *tls.Config
+	DebugLog    DebugLogger
 	idle        map[string]idleConnection
 	now         func() time.Time
 }
@@ -23,9 +24,11 @@ type idleConnection struct {
 }
 
 type Connection struct {
-	conn     net.Conn
-	timeout  time.Duration
-	reusable bool
+	conn         net.Conn
+	timeout      time.Duration
+	reusable     bool
+	debugLog     DebugLogger
+	debugAddress string
 }
 
 type TLSInfo struct {
@@ -59,24 +62,19 @@ func (c Client) DoContext(ctx context.Context, address string, request *Request)
 		ctx = context.Background()
 	}
 
-	timeout := c.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
 	request = request.Clone()
 	if request == nil {
 		return nil, fmt.Errorf("request is nil")
 	}
 	request.SetHeader("Connection", "close")
 
-	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	connection, err := (&c).dialContext(ctx, address)
 	if err != nil {
-		return nil, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
+		return nil, err
 	}
-	defer conn.Close()
+	defer connection.Close()
 
-	return NewConnection(conn, timeout).RoundTripContext(ctx, request)
+	return connection.RoundTripContext(ctx, request)
 }
 
 func (c Client) DoTLS(address, serverName string, request *Request) (*Response, error) {
@@ -109,32 +107,82 @@ func (c Client) DoTLSContextWithInfo(ctx context.Context, address, serverName st
 	request.SetHeader("Connection", "close")
 
 	dialer := net.Dialer{Timeout: timeout}
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventDialStart,
+		Phase:   ErrorPhaseDial,
+		Address: address,
+	})
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, TLSInfo{}, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
+		err = classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventDialDone,
+			Phase:   ErrorPhaseDial,
+			Address: address,
+			Err:     err,
+		})
+		return nil, TLSInfo{}, err
 	}
 	defer conn.Close()
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventDialDone,
+		Phase:   ErrorPhaseDial,
+		Address: address,
+	})
 
 	config, err := c.tlsConfig(serverName)
 	if err != nil {
 		return nil, TLSInfo{}, err
 	}
 	tlsConn := tls.Client(conn, config)
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventTLSHandshakeStart,
+		Phase:   ErrorPhaseTLSHandshake,
+		Address: address,
+	})
 	if err := tlsConn.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("set tls deadline: %w", err))
+		err = classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("set tls deadline: %w", err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventTLSHandshakeDone,
+			Phase:   ErrorPhaseTLSHandshake,
+			Address: address,
+			Err:     err,
+		})
+		return nil, TLSInfo{}, err
 	}
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake canceled: %w", ctxErr))
+			err = classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake canceled: %w", ctxErr))
+			c.emitDebug(DebugEvent{
+				Name:    DebugEventTLSHandshakeDone,
+				Phase:   ErrorPhaseTLSHandshake,
+				Address: address,
+				Err:     err,
+			})
+			return nil, TLSInfo{}, err
 		}
-		return nil, TLSInfo{}, classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake with %s: %w", serverName, err))
+		err = classifyClientError(ErrorPhaseTLSHandshake, fmt.Errorf("tls handshake with %s: %w", serverName, err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventTLSHandshakeDone,
+			Phase:   ErrorPhaseTLSHandshake,
+			Address: address,
+			Err:     err,
+		})
+		return nil, TLSInfo{}, err
 	}
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventTLSHandshakeDone,
+		Phase:   ErrorPhaseTLSHandshake,
+		Address: address,
+	})
 
 	info := TLSInfoFromConnectionState(tlsConn.ConnectionState())
 	if info.ServerName == "" {
 		info.ServerName = serverName
 	}
-	response, err := NewConnection(tlsConn, timeout).RoundTripContext(ctx, request)
+	connection := NewConnection(tlsConn, timeout)
+	c.configureConnection(connection, address)
+	response, err := connection.RoundTripContext(ctx, request)
 	if err != nil {
 		return nil, info, err
 	}
@@ -160,6 +208,12 @@ func (c *Client) DoReusableContext(ctx context.Context, address string, request 
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		c.configureConnection(connection, address)
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventConnectionReused,
+			Address: address,
+		})
 	}
 
 	response, err := connection.RoundTripContext(ctx, request)
@@ -172,6 +226,11 @@ func (c *Client) DoReusableContext(ctx context.Context, address string, request 
 			connection: connection,
 			idleAt:     c.currentTime(),
 		}
+		c.emitDebug(DebugEvent{
+			Name:     DebugEventConnectionIdle,
+			Address:  address,
+			Reusable: true,
+		})
 	} else {
 		connection.Close()
 	}
@@ -226,6 +285,24 @@ func (c *Client) currentTime() time.Time {
 	return time.Now()
 }
 
+func (c *Client) configureConnection(connection *Connection, address string) {
+	if connection == nil {
+		return
+	}
+	connection.debugLog = c.DebugLog
+	connection.debugAddress = address
+}
+
+func (c *Client) emitDebug(event DebugEvent) {
+	if c == nil || c.DebugLog == nil {
+		return
+	}
+	if event.Time.IsZero() {
+		event.Time = c.currentTime()
+	}
+	c.DebugLog(event)
+}
+
 func (c Client) tlsConfig(serverName string) (*tls.Config, error) {
 	if serverName == "" {
 		return nil, fmt.Errorf("TLS server name is required")
@@ -271,11 +348,30 @@ func (c *Client) dialContext(ctx context.Context, address string) (*Connection, 
 	}
 
 	dialer := net.Dialer{Timeout: timeout}
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventDialStart,
+		Phase:   ErrorPhaseDial,
+		Address: address,
+	})
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
+		err = classifyClientError(ErrorPhaseDial, fmt.Errorf("dial tcp %s: %w", address, err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventDialDone,
+			Phase:   ErrorPhaseDial,
+			Address: address,
+			Err:     err,
+		})
+		return nil, err
 	}
-	return NewConnection(conn, timeout), nil
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventDialDone,
+		Phase:   ErrorPhaseDial,
+		Address: address,
+	})
+	connection := NewConnection(conn, timeout)
+	c.configureConnection(connection, address)
+	return connection, nil
 }
 
 func (c *Connection) RoundTrip(request *Request) (*Response, error) {
@@ -306,29 +402,123 @@ func (c *Connection) RoundTripContext(ctx context.Context, request *Request) (*R
 	stopCancelWatch := closeOnCancel(ctx, c.cancelClosers(request)...)
 	defer stopCancelWatch()
 
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventWriteRequestStart,
+		Phase:   ErrorPhaseWriteRequest,
+		Address: c.debugAddress,
+		Method:  request.Method,
+		Target:  request.Target,
+	})
 	if err := c.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("set write deadline: %w", err))
+		err = classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("set write deadline: %w", err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventWriteRequestDone,
+			Phase:   ErrorPhaseWriteRequest,
+			Address: c.debugAddress,
+			Method:  request.Method,
+			Target:  request.Target,
+			Err:     err,
+		})
+		return nil, err
 	}
 	if err := WriteRequest(c.conn, request); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("request canceled: %w", ctxErr))
+			err = classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("request canceled: %w", ctxErr))
+			c.emitDebug(DebugEvent{
+				Name:    DebugEventWriteRequestDone,
+				Phase:   ErrorPhaseWriteRequest,
+				Address: c.debugAddress,
+				Method:  request.Method,
+				Target:  request.Target,
+				Err:     err,
+			})
+			return nil, err
 		}
-		return nil, classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("write HTTP request: %w", err))
+		err = classifyClientError(ErrorPhaseWriteRequest, fmt.Errorf("write HTTP request: %w", err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventWriteRequestDone,
+			Phase:   ErrorPhaseWriteRequest,
+			Address: c.debugAddress,
+			Method:  request.Method,
+			Target:  request.Target,
+			Err:     err,
+		})
+		return nil, err
 	}
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventWriteRequestDone,
+		Phase:   ErrorPhaseWriteRequest,
+		Address: c.debugAddress,
+		Method:  request.Method,
+		Target:  request.Target,
+	})
 
+	c.emitDebug(DebugEvent{
+		Name:    DebugEventReadResponseStart,
+		Phase:   ErrorPhaseReadResponse,
+		Address: c.debugAddress,
+		Method:  request.Method,
+		Target:  request.Target,
+	})
 	if err := c.conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("set read deadline: %w", err))
+		err = classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("set read deadline: %w", err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventReadResponseDone,
+			Phase:   ErrorPhaseReadResponse,
+			Address: c.debugAddress,
+			Method:  request.Method,
+			Target:  request.Target,
+			Err:     err,
+		})
+		return nil, err
 	}
 	response, err := ReadResponse(c.conn)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("request canceled: %w", ctxErr))
+			err = classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("request canceled: %w", ctxErr))
+			c.emitDebug(DebugEvent{
+				Name:    DebugEventReadResponseDone,
+				Phase:   ErrorPhaseReadResponse,
+				Address: c.debugAddress,
+				Method:  request.Method,
+				Target:  request.Target,
+				Err:     err,
+			})
+			return nil, err
 		}
-		return nil, classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("read HTTP response: %w", err))
+		err = classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("read HTTP response: %w", err))
+		c.emitDebug(DebugEvent{
+			Name:    DebugEventReadResponseDone,
+			Phase:   ErrorPhaseReadResponse,
+			Address: c.debugAddress,
+			Method:  request.Method,
+			Target:  request.Target,
+			Err:     err,
+		})
+		return nil, err
 	}
 
 	c.reusable = !HasConnectionToken(request.HeaderFields, "close") && !response.ShouldCloseConnection()
+	c.emitDebug(DebugEvent{
+		Name:       DebugEventReadResponseDone,
+		Phase:      ErrorPhaseReadResponse,
+		Address:    c.debugAddress,
+		Method:     request.Method,
+		Target:     request.Target,
+		StatusCode: response.StatusCode,
+		Reusable:   c.reusable,
+	})
 	return response, nil
+}
+
+func (c *Connection) emitDebug(event DebugEvent) {
+	if c == nil || c.debugLog == nil {
+		return
+	}
+	if event.Time.IsZero() {
+		event.Time = time.Now()
+	}
+	c.debugLog(event)
 }
 
 func (c *Connection) cancelClosers(request *Request) []io.Closer {
