@@ -128,28 +128,7 @@ func TestClientDebugLogRecordsRoundTripEvents(t *testing.T) {
 }
 
 func TestClientDebugLogRecordsReadResponseDuration(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer listener.Close()
-
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		if _, err := readHeaderBlock(bufio.NewReader(conn)); err != nil {
-			t.Errorf("read request: %v", err)
-			return
-		}
-		time.Sleep(40 * time.Millisecond)
-		if _, err := io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"); err != nil {
-			t.Errorf("write response: %v", err)
-		}
-	}()
+	server := startDelayedResponseServer(t, 40*time.Millisecond, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
 
 	var events []DebugEvent
 	client := Client{
@@ -159,7 +138,7 @@ func TestClientDebugLogRecordsReadResponseDuration(t *testing.T) {
 		},
 	}
 
-	response, err := client.Do(listener.Addr().String(), newTestRequest(t, "/slow"))
+	response, err := client.Do(server.Address(), newTestRequest(t, "/slow"))
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}

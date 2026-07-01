@@ -95,6 +95,20 @@ The duration is measured from the matching start event to the done event. This
 keeps timing close to the actual blocking operation being studied: dialing,
 handshaking, writing request bytes, or waiting for and parsing response bytes.
 
+## Reproducible Test Servers
+
+Robustness tests use small TCP test servers for specific failure scenarios:
+
+- a silent server that reads the request and withholds a response to reproduce
+  read timeouts
+- a malformed-response server that returns invalid HTTP bytes to reproduce
+  protocol errors
+- a delayed-response server that waits before sending a valid response to
+  exercise timing measurements
+
+These helpers live in test code. They are intentionally smaller than a real HTTP
+server so each test can focus on one network or protocol condition.
+
 ## Current Limits
 
 This classification is intentionally small. It does not yet decide whether an

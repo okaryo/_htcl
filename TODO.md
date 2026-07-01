@@ -201,7 +201,7 @@ Questions to answer:
 - [x] Refine retry decisions with error phase classification and backoff.
 - [x] Add structured debug logs.
 - [x] Add simple timing measurements.
-- [ ] Add small reproducible test servers.
+- [x] Add small reproducible test servers.
 - [ ] Run race detection where applicable.
 - [ ] Document known limitations.
 
@@ -408,3 +408,6 @@ changes.
 - Added simple timing measurements to debug done events. Dial, TLS handshake,
   request write, and response read events now carry a duration for observing
   where a request spent time.
+- Added small reproducible TCP test servers for robustness scenarios. Tests can
+  now reuse focused servers for silent responses, malformed responses, and
+  delayed valid responses.

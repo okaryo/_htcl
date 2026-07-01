@@ -1,11 +1,11 @@
 package http1
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,25 +28,10 @@ func TestClientErrorClassifiesDialFailureAsNetwork(t *testing.T) {
 }
 
 func TestClientErrorClassifiesReadTimeoutAsTimeout(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer listener.Close()
-
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		_, _ = readHeaderBlock(bufio.NewReader(conn))
-		time.Sleep(200 * time.Millisecond)
-	}()
+	server := startSilentResponseServer(t, 200*time.Millisecond)
 
 	client := Client{Timeout: 20 * time.Millisecond}
-	_, err = client.Do(listener.Addr().String(), newTestRequest(t, "/"))
+	_, err := client.Do(server.Address(), newTestRequest(t, "/"))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -55,27 +40,15 @@ func TestClientErrorClassifiesReadTimeoutAsTimeout(t *testing.T) {
 }
 
 func TestClientErrorClassifiesMalformedResponseAsProtocol(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer listener.Close()
-
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		_, _ = readHeaderBlock(bufio.NewReader(conn))
-		_, _ = conn.Write([]byte("NOPE\r\n\r\n"))
-	}()
+	server := startMalformedResponseServer(t)
 
 	client := Client{Timeout: time.Second}
-	_, err = client.Do(listener.Addr().String(), newTestRequest(t, "/"))
+	_, err := client.Do(server.Address(), newTestRequest(t, "/"))
 	if err == nil {
 		t.Fatal("expected an error")
+	}
+	if request := server.Request(t); !strings.HasPrefix(request, "GET / HTTP/1.1\r\n") {
+		t.Fatalf("request line mismatch:\n%s", request)
 	}
 
 	assertClientError(t, err, ErrorKindProtocol, ErrorPhaseReadResponse)
