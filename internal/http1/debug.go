@@ -19,6 +19,7 @@ const (
 
 type DebugEvent struct {
 	Time       time.Time
+	Duration   time.Duration
 	Name       DebugEventName
 	Phase      ErrorPhase
 	Address    string

@@ -200,7 +200,7 @@ Questions to answer:
 - [x] Classify network, timeout, protocol, and application errors.
 - [x] Refine retry decisions with error phase classification and backoff.
 - [x] Add structured debug logs.
-- [ ] Add simple timing measurements.
+- [x] Add simple timing measurements.
 - [ ] Add small reproducible test servers.
 - [ ] Run race detection where applicable.
 - [ ] Document known limitations.
@@ -405,3 +405,6 @@ changes.
   report phase-oriented events such as dial, TLS handshake, request write,
   response read, idle storage, and connection reuse without forcing a specific
   output format.
+- Added simple timing measurements to debug done events. Dial, TLS handshake,
+  request write, and response read events now carry a duration for observing
+  where a request spent time.

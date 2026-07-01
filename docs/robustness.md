@@ -77,9 +77,23 @@ The hook receives events such as:
 - `connection_idle`
 
 Each event can carry phase, address, method, target, status code, reusability,
-timestamp, and error information. The library does not decide whether these
-events should be printed as text, JSON, test assertions, or trace spans. That
-choice belongs to the caller.
+timestamp, duration, and error information. The library does not decide whether
+these events should be printed as text, JSON, test assertions, or trace spans.
+That choice belongs to the caller.
+
+## Timing Measurements
+
+Done events include a `Duration` when the client can measure a clear phase
+boundary:
+
+- `dial_done`
+- `tls_handshake_done`
+- `write_request_done`
+- `read_response_done`
+
+The duration is measured from the matching start event to the done event. This
+keeps timing close to the actual blocking operation being studied: dialing,
+handshaking, writing request bytes, or waiting for and parsing response bytes.
 
 ## Current Limits
 

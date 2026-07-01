@@ -127,6 +127,55 @@ func TestClientDebugLogRecordsRoundTripEvents(t *testing.T) {
 	}
 }
 
+func TestClientDebugLogRecordsReadResponseDuration(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		if _, err := readHeaderBlock(bufio.NewReader(conn)); err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		time.Sleep(40 * time.Millisecond)
+		if _, err := io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}()
+
+	var events []DebugEvent
+	client := Client{
+		Timeout: 2 * time.Second,
+		DebugLog: func(event DebugEvent) {
+			events = append(events, event)
+		},
+	}
+
+	response, err := client.Do(listener.Addr().String(), newTestRequest(t, "/slow"))
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d", response.StatusCode)
+	}
+
+	event, ok := lastDebugEvent(events, DebugEventReadResponseDone)
+	if !ok {
+		t.Fatalf("missing %s event in %v", DebugEventReadResponseDone, debugEventNames(events))
+	}
+	if event.Duration < 30*time.Millisecond {
+		t.Fatalf("read response duration = %s, want at least 30ms", event.Duration)
+	}
+}
+
 func TestClientDoStreamsRequestBodyFromReader(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1190,6 +1239,15 @@ func debugEventNames(events []DebugEvent) []DebugEventName {
 		names = append(names, event.Name)
 	}
 	return names
+}
+
+func lastDebugEvent(events []DebugEvent, name DebugEventName) (DebugEvent, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Name == name {
+			return events[i], true
+		}
+	}
+	return DebugEvent{}, false
 }
 
 func newTestCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {
