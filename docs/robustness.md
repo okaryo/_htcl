@@ -109,6 +109,22 @@ Robustness tests use small TCP test servers for specific failure scenarios:
 These helpers live in test code. They are intentionally smaller than a real HTTP
 server so each test can focus on one network or protocol condition.
 
+## Race Detection
+
+Race detection is useful for the parts of this project that use goroutines:
+
+- context cancellation closes active connections from another goroutine
+- tests run small TCP servers concurrently with the client
+- debug hooks can collect events while a request is running
+
+The current race check is:
+
+```sh
+go test -race ./...
+```
+
+At this point it passes for the command package and `internal/http1`.
+
 ## Current Limits
 
 This classification is intentionally small. It does not yet decide whether an

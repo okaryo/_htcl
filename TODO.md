@@ -202,7 +202,7 @@ Questions to answer:
 - [x] Add structured debug logs.
 - [x] Add simple timing measurements.
 - [x] Add small reproducible test servers.
-- [ ] Run race detection where applicable.
+- [x] Run race detection where applicable.
 - [ ] Document known limitations.
 
 Questions to answer:
@@ -411,3 +411,6 @@ changes.
 - Added small reproducible TCP test servers for robustness scenarios. Tests can
   now reuse focused servers for silent responses, malformed responses, and
   delayed valid responses.
+- Ran race detection with `go test -race ./...`. No data races were reported in
+  the command package or `internal/http1`, including recent debug logging and
+  test server goroutine paths.
