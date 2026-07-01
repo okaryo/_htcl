@@ -179,10 +179,12 @@ func getURLOnceWithRetries(u *url.URL, proxy *url.URL, method string, headers []
 		if err == nil {
 			return response, nil
 		}
-		if attempt >= retries || !http1.IsIdempotentMethod(method) {
+		if attempt >= retries || !http1.ShouldRetry(method, err) {
 			return nil, err
 		}
-		fmt.Fprintf(stderr, "retrying %s request after error: %v\n", method, err)
+		delay := http1.RetryBackoff(attempt)
+		fmt.Fprintf(stderr, "retrying %s request after error in %s: %v\n", method, delay, err)
+		time.Sleep(delay)
 	}
 }
 

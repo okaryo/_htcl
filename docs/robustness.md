@@ -54,6 +54,6 @@ That returns an `application` `ClientError` for status codes `400` and above.
 ## Current Limits
 
 This classification is intentionally small. It does not yet decide whether an
-error is retryable, whether a request body was partially written, or whether a
-streaming body can be replayed. Those decisions need more phase detail and are
-left for the retry refinement step.
+error is safe to retry in every real-world case, whether a request body was
+partially written, or whether a streaming body can be replayed. Those decisions
+need more phase detail and request-body metadata.

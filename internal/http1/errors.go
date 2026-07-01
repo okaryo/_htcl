@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 )
 
@@ -69,7 +70,7 @@ func classifyClientError(phase ErrorPhase, err error) error {
 	kind := ErrorKindNetwork
 	if isTimeoutError(err) {
 		kind = ErrorKindTimeout
-	} else if phase == ErrorPhaseSerialize || (phase == ErrorPhaseReadResponse && !hasNetworkError(err)) {
+	} else if phase == ErrorPhaseSerialize || (phase == ErrorPhaseReadResponse && !hasNetworkError(err) && !isConnectionEOF(err)) {
 		kind = ErrorKindProtocol
 	}
 
@@ -91,4 +92,8 @@ func isTimeoutError(err error) bool {
 func hasNetworkError(err error) bool {
 	var netErr net.Error
 	return errors.As(err, &netErr)
+}
+
+func isConnectionEOF(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }

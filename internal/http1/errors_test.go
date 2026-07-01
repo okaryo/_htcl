@@ -3,6 +3,8 @@ package http1
 import (
 	"bufio"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -77,6 +79,11 @@ func TestClientErrorClassifiesMalformedResponseAsProtocol(t *testing.T) {
 	}
 
 	assertClientError(t, err, ErrorKindProtocol, ErrorPhaseReadResponse)
+}
+
+func TestClientErrorClassifiesReadResponseEOFAsNetwork(t *testing.T) {
+	err := classifyClientError(ErrorPhaseReadResponse, fmt.Errorf("read HTTP response: %w", io.EOF))
+	assertClientError(t, err, ErrorKindNetwork, ErrorPhaseReadResponse)
 }
 
 func TestResponseStatusErrorClassifiesHTTPStatusAsApplication(t *testing.T) {

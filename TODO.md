@@ -198,7 +198,7 @@ Questions to answer:
 ### 10. Robustness And Observability
 
 - [x] Classify network, timeout, protocol, and application errors.
-- [ ] Refine retry decisions with error phase classification and backoff.
+- [x] Refine retry decisions with error phase classification and backoff.
 - [ ] Add structured debug logs.
 - [ ] Add simple timing measurements.
 - [ ] Add small reproducible test servers.
@@ -398,3 +398,6 @@ changes.
   network, timeout, protocol, and application. HTTP `4xx` and `5xx` responses
   are still returned as valid responses by default, with `ResponseStatusError`
   available when callers want to treat them as application errors.
+- Refined retry decisions to use error classification. Retries now require an
+  idempotent method and a `network` or `timeout` client error, and the CLI waits
+  with capped exponential backoff before retrying.

@@ -50,12 +50,30 @@ The same flag does not retry a `POST`:
 go run ./cmd/htcl -retries 1 -method POST -body hello http://127.0.0.1:8080/submit
 ```
 
-## Why Retries Are Hard
+## Retry Decisions
 
-The current implementation retries after request/response exchange errors. The
-client now classifies broad error kinds and phases, but retry decisions still do
-not use the full detail needed to determine whether bytes were written before
-the failure.
+The current implementation retries only when both conditions are true:
+
+- the request method is idempotent
+- the error is classified as `network` or `timeout`
+
+Protocol errors, application status errors, and unclassified errors are not
+retried automatically.
+
+Retryable phases currently include:
+
+- `dial`
+- `tls_handshake`
+- `write_request`
+- `read_response`
+
+The CLI waits before each retry using a small exponential backoff:
+
+```text
+100ms, 200ms, 400ms, ... capped at 2s
+```
+
+## Why Retries Are Still Hard
 
 That distinction matters:
 
@@ -66,10 +84,10 @@ That distinction matters:
   request.
 
 Because retry behavior is still coarse, it remains opt-in and limited to
-idempotent methods.
+idempotent methods. Even for idempotent requests, retrying can create extra
+load or repeat side effects in imperfect servers.
 
 ## Future Work
 
-More realistic retry behavior would classify errors by phase, respect
-`Retry-After`, apply backoff, and avoid retrying requests with non-replayable
-streaming bodies.
+More realistic retry behavior would respect `Retry-After`, add jitter to
+backoff, and avoid retrying requests with non-replayable streaming bodies.
